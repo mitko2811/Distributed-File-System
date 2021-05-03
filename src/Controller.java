@@ -1,6 +1,7 @@
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 
@@ -11,21 +12,8 @@ public class Controller {
     static int rebalance_period;
 
     List<Dstore> Dstore_list; // list of Dstores
+	HashMap<Integer,String> Dstoreports = new HashMap<>();
 
-
-    public static String unEscapeString(String s){
-        StringBuilder sb = new StringBuilder();
-        for (int i=0; i<s.length(); i++)
-            switch (s.charAt(i)){
-                case '\n': sb.append("\\n"); break;
-                case '\t': sb.append("\\t"); break;
-                case '\b': sb.append("\\b"); break;
-                case '\f': sb.append("\\f"); break;
-                case '\r': sb.append("\\r"); break;
-                default: sb.append(s.charAt(i));
-            }
-        return sb.toString();
-    }
 
     public static void main(String[] args) throws IOException {
         cport=Integer.parseInt(args[0]);
@@ -56,7 +44,7 @@ public class Controller {
 //                    command = unEscapeString(command);
 					System.out.println("command \""+command+"\" size is " +command.length());
 
-					if(command.equals("STORE")){
+					if(command.equals("STORE")){ //Client STORE filename filesize -> Client STORE_TO port1 port2 ... portR |> Dstores STORE_ACK filename -> Client STORE_COMPLETE
                         System.out.println("ENTERED STORE");
 						int secondSpace=firstBuffer.indexOf(" ",firstSpace+1);
 						String fileName=firstBuffer.substring(firstSpace+1,secondSpace);
@@ -70,7 +58,7 @@ public class Controller {
 						}in.close(); client.close(); out.close();
 					} else 
                     
-                    if(command.equals("LOAD")){
+                    if(command.equals("LOAD")){ //Client LOAD filename -> Client LOAD_FROM port filesize
                         System.out.println("ENTERED LOAD");
 						int secondSpace=firstBuffer.indexOf(" ",firstSpace+1);
 						String fileName=firstBuffer.substring(firstSpace+1,secondSpace);
@@ -84,7 +72,7 @@ public class Controller {
 						}in.close(); inf.close(); client.close(); out.close();
 					} else
 
-                    if(command.equals("REMOVE")){
+                    if(command.equals("REMOVE")){ // Client REMOVE filename -> Dstores REMOVE filename |> Dstores REMOVE_ACK filename -> Client REMOVE_COMPLETE
                         System.out.println("ENTERED REMOVE");
 						int secondSpace=firstBuffer.indexOf(" ",firstSpace+1);
 						String fileName=firstBuffer.substring(firstSpace+1,secondSpace);
@@ -98,7 +86,17 @@ public class Controller {
 						}in.close(); inf.close(); client.close(); out.close();
 					} else
 
-     				if(command.equals("LIST")){
+     				if(command.equals("LIST")){ //Client LIST -> Client LIST file_list
+                        OutputStream out = client.getOutputStream();
+                        System.out.println("ENTERED LIST");
+                        String test = "LIST Deeznuts.exe aimbot.txt";
+                        out.write(test.getBytes());
+                        out.flush();
+                        out.close();
+						System.out.println("TRIED TO SEND BABY");
+					} else
+
+					if(command.equals("JOIN")){ //Dstore JOIN port -> Dstores LIST |> Dsotres LIST file_list -> Dstores REBALANCE files_to_send files_to_remove
                         OutputStream out = client.getOutputStream();
                         System.out.println("ENTERED LIST");
                         String test = "LIST Deeznuts.exe aimbot.txt";
@@ -116,5 +114,21 @@ public class Controller {
 		catch(Exception e){System.out.println("error "+e);}
 		System.out.println();
 	}
+
+
+
+	public static String unEscapeString(String s){
+        StringBuilder sb = new StringBuilder();
+        for (int i=0; i<s.length(); i++)
+            switch (s.charAt(i)){
+                case '\n': sb.append("\\n"); break;
+                case '\t': sb.append("\\t"); break;
+                case '\b': sb.append("\\b"); break;
+                case '\f': sb.append("\\f"); break;
+                case '\r': sb.append("\\r"); break;
+                default: sb.append(s.charAt(i));
+            }
+        return sb.toString();
+    }
 
 }
