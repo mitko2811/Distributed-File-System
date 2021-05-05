@@ -8,7 +8,6 @@ public class Dstore {
 	static String file_folder;
 	private static Dstore dstore;
 	private boolean disconnected = true;
-	String fileToWrite = "";
 
 	public Dstore(int port, int cport, int timeout, String file_folder) {
 		Dstore.port = port;
@@ -34,8 +33,11 @@ public class Dstore {
 			try {
 				BufferedReader inController = new BufferedReader(new InputStreamReader(controller.getInputStream()));
 				BufferedWriter outController = new BufferedWriter(new OutputStreamWriter(controller.getOutputStream()));
-
 				InputStream in = controller.getInputStream();
+
+
+				String fileToWrite = "";
+
 				if (disconnected) {
 					outController.write(Protocol.JOIN_TOKEN + " " + port);
 					outController.flush();

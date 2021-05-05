@@ -15,6 +15,7 @@ public class Controller {
 	List<Dstore> Dstore_list; // list of Dstores
 	static HashMap<Integer, ArrayList<String>> dstore_ports_files = new HashMap<Integer, ArrayList<String>>();
 	static HashMap<ArrayList<String>, Integer> dstore_files_ports = new HashMap<ArrayList<String>,Integer>();
+	static HashMap<String, Integer> dstore_file_ports = new HashMap<String,Integer>();
 	static ConcurrentHashMap<String, Integer> fileToStore_ACK = new ConcurrentHashMap<String, Integer>();
 
 	public static void main(String[] args) throws IOException {
@@ -46,13 +47,13 @@ public class Controller {
 							boolean isDstore = false;
 							int storeACKnumber = 0;
 							String fileToStore = "";
-
+							System.out.println("test1");
 							for (;;) {
 
-								if(fileToStore!="" & fileToStore_ACK.get(fileToStore)>=R){ // checks if file to store has completed acknowledgements
+								if(fileToStore!="" && fileToStore_ACK.get(fileToStore)!=null && fileToStore_ACK.get(fileToStore)>=R){ // checks if file to store has completed acknowledgements
 									outToClient.write(Protocol.STORE_COMPLETE_TOKEN);
+									fileToStore="";
 								}
-
 
 
 								buflen = in.read(buf);
@@ -82,6 +83,7 @@ public class Controller {
 										String portsToStore[] = getPortsToStore(dstore_ports_files,filename);
 										String portsToStoreString = String.join(" ", portsToStore);
 
+										fileToStore = filename;
 										outToClient.write(Protocol.STORE_TO_TOKEN + " " + portsToStoreString);
 										outToClient.flush();
 
@@ -141,6 +143,7 @@ public class Controller {
 									if (command.equals(Protocol.LIST_TOKEN) && firstBuffer==null) { // Client LIST -> Client LIST file_list
 
 										System.out.println("asked list from client");
+										outToClient.write(Protocol.LIST_TOKEN + " " + "Deez.nuts da.baby");
 									} else	
 
 									if (command.equals(Protocol.LIST_TOKEN) && firstBuffer!=null) { // DSTORE LIST
@@ -189,7 +192,7 @@ public class Controller {
 
 
 	private static String[] getPortsToStore(HashMap<Integer, ArrayList<String>> dstore_ports,String filename){
-
+		
 
 
 		return null;
