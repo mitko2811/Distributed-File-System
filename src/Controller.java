@@ -230,7 +230,7 @@ public class Controller {
 
 									} else
 										System.out.println("unrecognised command");
-								}
+								} else {client.close();break;}
 							}
 							// outToClient.close();
 						} catch (Exception e) {

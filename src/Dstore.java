@@ -132,7 +132,7 @@ public class Dstore {
 							// out.close();
 							// } else
 							// System.out.println("unrecognised command");
-						}
+						} else{controller.close();break; }
 					} catch (Exception e) {
 						System.out.println("Controller error1 " + e);
 					}
@@ -261,7 +261,7 @@ public class Dstore {
 										// out.close();
 										// } else
 										// System.out.println("unrecognised command");
-									}
+									} else {client.close();break;}
 								} catch (Exception e) {
 									System.out.println("Client error1 " + e);
 								}
