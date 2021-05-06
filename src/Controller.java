@@ -61,7 +61,7 @@ public class Controller {
 									}
 
 									System.out.println("COMMAND RECIEVED \"" + command + "\"");
-
+//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.STORE_TOKEN)) { // STORE FROM CLIENT
 										System.out.println("ENTERED STORE FROM CLIENT");
 										if (Dstore_count < R) {
@@ -117,7 +117,7 @@ public class Controller {
 										}
 									} else
 
-
+//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.STORE_ACK_TOKEN)) { // Dstore Store_ACK filename
 										System.out.println("ENTERED STORE ACK");
 
@@ -169,7 +169,7 @@ public class Controller {
 									// client.close();
 									// out.close();
 									// } else
-
+//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.LIST_TOKEN) && data == null) { // Client LIST -> Client LIST file_list
 
 										System.out.println("asked list from client");
@@ -178,7 +178,7 @@ public class Controller {
 										outClient.flush();
 									} else
 
-
+//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.LIST_TOKEN) && data != null) { // DSTORE LIST
 										ArrayList<String> filelist = new ArrayList<String>(
 												Arrays.asList(data.split(" ")));
@@ -195,7 +195,7 @@ public class Controller {
 
 									} else
 
-
+//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.JOIN_TOKEN)) { // Dstore JOIN port
 										System.out.println("entered Join in controller");
 										System.out.println("port is " + data);
