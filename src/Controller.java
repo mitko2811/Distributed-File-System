@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Controller {
 	static int cport;
@@ -15,10 +16,10 @@ public class Controller {
 	static int Dstore_count = 0;
 
 	List<Dstore> Dstore_list; // list of Dstores
-	static ConcurrentHashMap<Integer, ArrayList<String>> dstore_port_files = new ConcurrentHashMap<Integer, ArrayList<String>>();
+	static ConcurrentHashMap<Integer, List<String>> dstore_port_files = new ConcurrentHashMap<Integer, List<String>>();
 	static ConcurrentHashMap<Integer, Integer> dstore_port_numbfiles = new ConcurrentHashMap<Integer, Integer>();
-	static ConcurrentHashMap<String, ArrayList<Integer>> dstore_file_ports = new ConcurrentHashMap<String, ArrayList<Integer>>();
-	static ConcurrentHashMap<String, ArrayList<Integer>> fileToStore_ACKPorts = new ConcurrentHashMap<String, ArrayList<Integer>>();
+	static ConcurrentHashMap<String, CopyOnWriteArrayList<Integer>> dstore_file_ports = new ConcurrentHashMap<String, CopyOnWriteArrayList<Integer>>();
+	static ConcurrentHashMap<String, CopyOnWriteArrayList<Integer>> fileToStore_ACKPorts = new ConcurrentHashMap<String, CopyOnWriteArrayList<Integer>>();
 	static ConcurrentHashMap<String, Integer> file_filesize = new ConcurrentHashMap<String, Integer>();
 
 	public static void main(String[] args) throws IOException {
@@ -82,7 +83,7 @@ public class Controller {
 												String portsToStore[] = getPortsToStore(dstore_port_numbfiles);
 												String portsToStoreString = String.join(" ", portsToStore);
 
-												fileToStore_ACKPorts.put(filename, new ArrayList<Integer>());// initialize store file acks
+												fileToStore_ACKPorts.put(filename, new CopyOnWriteArrayList<Integer>());// initialize store file acks
 												outClient.println(Protocol.STORE_TO_TOKEN + " " + portsToStoreString);
 												outClient.flush();
 
@@ -180,14 +181,16 @@ public class Controller {
 
 //---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.LIST_TOKEN) && data != null) { // DSTORE LIST
-										ArrayList<String> filelist = new ArrayList<String>(
-												Arrays.asList(data.split(" ")));
-										dstore_port_numbfiles.put(dstoreport, filelist.size()); // updates port/numbfiles hashmap
-										dstore_port_files.put(dstoreport, filelist); // puts list in hashmap
+										ArrayList<String> filelist = new ArrayList<String> (Arrays.asList(data.split(" "))); // not thread safe array
+										CopyOnWriteArrayList<String> filelist_safe = new CopyOnWriteArrayList<String> (filelist); // thread safe array
 
-										for (String string : filelist) {
+
+										dstore_port_numbfiles.put(dstoreport, filelist_safe.size()); // updates port/numbfiles hashmap
+										dstore_port_files.put(dstoreport, filelist_safe); // puts list in hashmap
+
+										for (String string : filelist_safe) {
 											if (dstore_file_ports.get(string) == null) {
-												dstore_file_ports.put(string, new ArrayList<Integer>());
+												dstore_file_ports.put(string, new CopyOnWriteArrayList<Integer>());
 											}
 											dstore_file_ports.get(string).add(dstoreport); // puts the given file the port that its in
 											System.out.println("Dstore port: " + dstoreport + " File: " + string);
@@ -200,7 +203,7 @@ public class Controller {
 										System.out.println("entered Join in controller");
 										System.out.println("port is " + data);
 										dstoreport = Integer.parseInt(data);
-										dstore_port_files.put(dstoreport, new ArrayList<String>()); // initialize port number of dstore
+										dstore_port_files.put(dstoreport, new CopyOnWriteArrayList<String>()); // initialize port number of dstore
 										isDstore = true;
 										Dstore_count++;
 
