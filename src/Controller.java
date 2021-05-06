@@ -17,10 +17,9 @@ public class Controller {
 	List<Dstore> Dstore_list; // list of Dstores
 	static ConcurrentHashMap<Integer, ArrayList<String>> dstore_port_files = new ConcurrentHashMap<Integer, ArrayList<String>>();
 	static ConcurrentHashMap<Integer, Integer> dstore_port_numbfiles = new ConcurrentHashMap<Integer, Integer>();
-	// static HashMap<ArrayList<String>, Integer> dstore_files_ports = new
-	// HashMap<ArrayList<String>,Integer>();
 	static ConcurrentHashMap<String, ArrayList<Integer>> dstore_file_ports = new ConcurrentHashMap<String, ArrayList<Integer>>();
-	static ConcurrentHashMap<String, Integer> fileToStore_ACK = new ConcurrentHashMap<String, Integer>();
+	static ConcurrentHashMap<String, ArrayList<Integer>> fileToStore_ACKPorts = new ConcurrentHashMap<String, ArrayList<Integer>>();
+	static ConcurrentHashMap<String, Integer> file_filesize = new ConcurrentHashMap<String, Integer>();
 
 	public static void main(String[] args) throws IOException {
 		cport = Integer.parseInt(args[0]);
@@ -34,14 +33,13 @@ public class Controller {
 			ServerSocket ss = new ServerSocket(cport);
 			for (;;) {
 				try {
-					System.out.println("waiting for connection");
+					System.out.println("Waiting for connection");
 					Socket client = ss.accept();
 
 					new Thread(() -> {
 						try {
-							System.out.println("connected");
-							BufferedReader inFromClient = new BufferedReader(
-									new InputStreamReader(client.getInputStream()));
+							System.out.println("Connected");
+							BufferedReader inFromClient = new BufferedReader(new InputStreamReader(client.getInputStream()));
 							PrintWriter outClient = new PrintWriter(client.getOutputStream());
 							String data = null;
 							int dstoreport = 0;
@@ -62,14 +60,14 @@ public class Controller {
 										data = data.substring(firstSpace + 1);
 									}
 
-									System.out.println("command \"" + command + "\" size is " + command.length());
+									System.out.println("COMMAND RECIEVED \"" + command + "\"");
 
-									if (command.equals(Protocol.STORE_TOKEN)) {
-										System.out.println("ENTERED STORE");
+									if (command.equals(Protocol.STORE_TOKEN)) { // STORE FROM CLIENT
+										System.out.println("ENTERED STORE FROM CLIENT");
 										if (Dstore_count < R) {
 											outClient.println(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
 											outClient.flush();
-											System.out.println("SEND NOT ENOUGH DSTORES FOR STORE COMMAND");
+											System.out.println("SEND NOT ENOUGH DSTORES FOR STORE ERROR");
 										} else {
 											String following[] = data.split(" ");
 											String filename = following[0];
@@ -78,52 +76,58 @@ public class Controller {
 											if (dstore_file_ports.get(filename) != null) {
 												outClient.println(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
 												outClient.flush();
+												System.out.println("SEND FILE ALREADY EXISTS ERROR");
 											} else {
 
 												String portsToStore[] = getPortsToStore(dstore_port_numbfiles);
 												String portsToStoreString = String.join(" ", portsToStore);
 
-												fileToStore_ACK.put(filename, 0);// initialize store file acks
+												fileToStore_ACKPorts.put(filename, new ArrayList<Integer>());// initialize store file acks
 												outClient.println(Protocol.STORE_TO_TOKEN + " " + portsToStoreString);
 												outClient.flush();
 
-												long current_time = System.currentTimeMillis();
-												long timeout_time = current_time + timeout;
+												System.out.println("TIMES");
 												boolean success_Store = false;
-												while (current_time < timeout_time) {
-													if (fileToStore_ACK.get(filename) >= R) { // checks if file to store
-																								// has completed
-																								// acknowledgements
+												long timeout_time = System.currentTimeMillis() + timeout;
+												while (System.currentTimeMillis() < timeout_time) {
+													if (fileToStore_ACKPorts.get(filename).size() >= R) { // checks if file to store has completed acknowledgements
 														outClient.println(Protocol.STORE_COMPLETE_TOKEN);
 														outClient.flush();
-														System.out
-																.println("SEND STORE COMPLETE ACK FOR :" + fileToStore);
-														fileToStore_ACK.remove(fileToStore);
+														System.out.println("SEND STORE COMPLETE ACK FOR: " + fileToStore);
+														dstore_file_ports.put(filename,fileToStore_ACKPorts.get(filename)); // update dstore_file_ports
+														fileToStore_ACKPorts.remove(fileToStore); // remove stored file from fileToStore_ACKPorts queue
+														file_filesize.put(filename,filesize); // add new file's filesize
+														for (Integer port : dstore_file_ports.get(filename)) {
+															dstore_port_files.get(port).add(filename); //update dstore_port_files
+															dstore_port_numbfiles.put(port,dstore_port_numbfiles.get(port)+1); //increase dstore_port_numbfiles
+														}
+
 														success_Store = true;
+														System.out.println("BEFORE BREAK");
+														break;
 													}
 												}
+												System.out.println("EXITED LOOP TIMES");
 												if (!success_Store) {
-													fileToStore_ACK.remove(filename);
+													System.out.println("FAILED STORE: " + filename);
+													fileToStore_ACKPorts.remove(filename);
 												}
 
 											}
 										}
 									} else
 
+
 									if (command.equals(Protocol.STORE_ACK_TOKEN)) { // Dstore Store_ACK filename
 										System.out.println("ENTERED STORE ACK");
 
 										String filename = data;
-										System.out.println("filename is " + filename);
-										fileToStore_ACK.put(filename, fileToStore_ACK.get(filename) + 1); // increase
-																											// ack
-																											// number
-																											// inside
-																											// chmap
-										System.out.println("acknowlefgements for filename are now "
-												+ fileToStore_ACK.get(filename));
+										System.out.println("RECIEVED ACK FOR: " + filename);
+										fileToStore_ACKPorts.get(filename).add(dstoreport); // add ack port inside chmap
+										System.out.println("acknowlefgements for filename are now " + fileToStore_ACKPorts.get(filename));
 
 									} else
+
 
 									// if (command.equals(Protocol.LOAD_TOKEN)) { // Client LOAD filename -> Client
 									// LOAD_FROM port
@@ -166,42 +170,37 @@ public class Controller {
 									// out.close();
 									// } else
 
-									if (command.equals(Protocol.LIST_TOKEN) && data == null) { // Client LIST -> Client
-																								// LIST file_list
+									if (command.equals(Protocol.LIST_TOKEN) && data == null) { // Client LIST -> Client LIST file_list
 
 										System.out.println("asked list from client");
-										outClient.println(Protocol.LIST_TOKEN + " " + "Deez.nuts da.baby");
+										String filesList = String.join(" ", file_filesize.keySet()); 
+										outClient.println(Protocol.LIST_TOKEN + " " + filesList);
 										outClient.flush();
 									} else
+
 
 									if (command.equals(Protocol.LIST_TOKEN) && data != null) { // DSTORE LIST
 										ArrayList<String> filelist = new ArrayList<String>(
 												Arrays.asList(data.split(" ")));
-										dstore_port_numbfiles.put(dstoreport, filelist.size()); // updates
-																								// port/numbfiles
-																								// hashmap
+										dstore_port_numbfiles.put(dstoreport, filelist.size()); // updates port/numbfiles hashmap
 										dstore_port_files.put(dstoreport, filelist); // puts list in hashmap
 
 										for (String string : filelist) {
 											if (dstore_file_ports.get(string) == null) {
 												dstore_file_ports.put(string, new ArrayList<Integer>());
 											}
-											dstore_file_ports.get(string).add(dstoreport); // puts the given file the
-																							// port that its in
+											dstore_file_ports.get(string).add(dstoreport); // puts the given file the port that its in
 											System.out.println("Dstore port: " + dstoreport + " File: " + string);
 										}
 
 									} else
 
-									if (command.equals(Protocol.JOIN_TOKEN)) { // Dstore JOIN port -> Dstores LIST |>
-																				// Dsotres
-																				// LIST file_list -> Dstores REBALANCE
-																				// files_to_send files_to_remove
+
+									if (command.equals(Protocol.JOIN_TOKEN)) { // Dstore JOIN port
 										System.out.println("entered Join in controller");
 										System.out.println("port is " + data);
 										dstoreport = Integer.parseInt(data);
-										dstore_port_files.put(dstoreport, new ArrayList<String>()); // initialize port
-																									// number of dstore
+										dstore_port_files.put(dstoreport, new ArrayList<String>()); // initialize port number of dstore
 										isDstore = true;
 										Dstore_count++;
 

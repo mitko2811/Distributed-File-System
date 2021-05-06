@@ -7,7 +7,6 @@ public class Dstore {
 	static int timeout;
 	static String file_folder;
 	private static Dstore dstore;
-	private boolean disconnected = true;
 
 	public Dstore(int port, int cport, int timeout, String file_folder) {
 		Dstore.port = port;
@@ -27,6 +26,11 @@ public class Dstore {
 			if (!folder.mkdir())
 				throw new RuntimeException("Cannot create new folder in " + folder.getAbsolutePath());
 		final String path = folder.getAbsolutePath(); // path of folder
+		for(File file: folder.listFiles()) // delete every file in directory if any
+		{
+			file.delete();
+		}
+
 		Socket controller = new Socket(InetAddress.getByName("localhost"), cport);
 
 		new Thread(() -> { // CONTROLLER
@@ -34,14 +38,11 @@ public class Dstore {
 				BufferedReader inController = new BufferedReader(new InputStreamReader(controller.getInputStream()));
 				PrintWriter outController = new PrintWriter(controller.getOutputStream());
 				InputStream in = controller.getInputStream();
-				String data=null;
+				String data = null;
 				String fileToWrite = "";
 
-				if (disconnected) {
-					outController.println(Protocol.JOIN_TOKEN + " " + port);
-					outController.flush();
-					disconnected = false;
-				}
+				outController.println(Protocol.JOIN_TOKEN + " " + port);
+				outController.flush();
 
 				System.out.println("Entering loop of Controller");
 
@@ -56,7 +57,6 @@ public class Dstore {
 
 						data = inController.readLine();
 						if (data != null) {
-							System.out.println("PASSED READING");
 							int firstSpace = data.indexOf(" ");
 							String command;
 							if (firstSpace == -1) {
@@ -66,18 +66,7 @@ public class Dstore {
 								command = data.substring(0, firstSpace);
 								data = data.substring(firstSpace + 1);
 							}
-							System.out.println("command " + command);
-
-							if (command.equals(Protocol.STORE_TOKEN)) { // Client STORE filename filesize -> Client ACK
-																		// |> Client file_content -> Controller
-																		// STORE_ACK filename
-								System.out.println("ENTERED STORE");
-
-								String following[] = data.split(" ");
-								String filename = following[0];
-								int filesize = Integer.parseInt(following[1]);
-
-							} else
+							System.out.println("RECIEVED CONTROLLER COMMAND: " + command);
 
 							// if (command.equals("LOAD_DATA")) { // Client LOAD_DATA filename ->
 							// file_content
@@ -146,32 +135,32 @@ public class Dstore {
 							// System.out.println("unrecognised command");
 						}
 					} catch (Exception e) {
-						System.out.println("error " + e);
+						System.out.println("Controller error1 " + e);
 					}
 				}
 			} catch (Exception e) {
-				System.out.println("error " + e);
+				System.out.println("Controller error2 " + e);
 			}
 		}).start();
 
 		System.out.println("GOING TO CLIENT PART");
-/* ---------------------------------CLIENTS PART----------------------------------------------*/
+		/* ---------------------------------CLIENTS PART----------------------------------------------*/
 		try {
 			ServerSocket ss = new ServerSocket(port);
 			for (;;) {
-				System.out.println("For");
-				if (disconnected == false) {
+					System.out.println("Client waiting");
 					Socket client = ss.accept();
-					System.out.println("Client 1");
 					new Thread(() -> { // CLIENTS
 						try {
-							System.out.println("Client 2");
-							BufferedReader inController = new BufferedReader(new InputStreamReader(controller.getInputStream()));
+							System.out.println("Client NEW THEREAD");
+							BufferedReader inController = new BufferedReader(
+									new InputStreamReader(controller.getInputStream()));
 							PrintWriter outController = new PrintWriter(controller.getOutputStream());
-							BufferedReader inClient = new BufferedReader(new InputStreamReader(client.getInputStream()));
+							BufferedReader inClient = new BufferedReader(
+									new InputStreamReader(client.getInputStream()));
 							PrintWriter outClient = new PrintWriter(client.getOutputStream());
 
-							String data=null;
+							String data = null;
 							InputStream in = client.getInputStream();
 							System.out.println("Client Connected");
 
@@ -189,7 +178,7 @@ public class Dstore {
 											command = data.substring(0, firstSpace);
 											data = data.substring(firstSpace + 1);
 										}
-										System.out.println("command " + command);
+										System.out.println("RECIEVED CLIENT COMMAND: " + command);
 
 										if (command.equals(Protocol.STORE_TOKEN)) {
 											System.out.println("ENTERED STORE FROM CLIENT");
@@ -246,9 +235,7 @@ public class Dstore {
 										// out.close();
 										// } else
 
-										if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST ->
-																					// Controller
-																					// file_list
+										if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
 											String[] fileList = folder.list();
 											String listToSend = String.join(" ", fileList);
 											outClient.println(Protocol.LIST_TOKEN + " " + listToSend);
@@ -279,18 +266,17 @@ public class Dstore {
 										// System.out.println("unrecognised command");
 									}
 								} catch (Exception e) {
-									System.out.println("error " + e);
+									System.out.println("Client error1 " + e);
 								}
 							}
 
 						} catch (Exception e) {
-							System.out.println("error " + e);
+							System.out.println("Client error2 " + e);
 						}
 					}).start();
-				}
 			}
 		} catch (Exception e) {
-			System.out.println("error " + e);
+			System.out.println("Client error3 " + e);
 		}
 		System.out.println();
 	}
