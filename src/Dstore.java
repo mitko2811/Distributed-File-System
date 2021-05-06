@@ -68,12 +68,11 @@ public class Dstore {
 							}
 							System.out.println("RECIEVED CONTROLLER COMMAND: " + command);
 
-							// if (command.equals("LOAD_DATA")) { // Client LOAD_DATA filename ->
-							// file_content
-							// int secondSpace = data.indexOf(" ", firstSpace + 1);
-							// String fileName = data.substring(firstSpace + 1, secondSpace);
-							// System.out.println("fileName " + fileName);
-							// File inputFile = new File(fileName);
+							// if (command.equals("LOAD_DATA")) { // Client LOAD_DATA filename -> file_content
+							// System.out.println("ENTERED LOAD FOR FILE: " + data);
+							// String filename = data;
+							// File tmpFile = new File(filename);
+							// File inputFile = new File(filename);
 							// FileInputStream inf = new FileInputStream(inputFile);
 							// OutputStream out = client.getOutputStream();
 							// while ((buflen = inf.read(buf)) != -1) {
@@ -89,9 +88,9 @@ public class Dstore {
 							// if (command.equals("REMOVE")) { // Controller REMOVE filename -> Controller
 							// REMOVE_ACK filename
 							// int secondSpace = data.indexOf(" ", firstSpace + 1);
-							// String fileName = data.substring(firstSpace + 1, secondSpace);
-							// System.out.println("fileName " + fileName);
-							// File outputFile = new File(fileName);
+							// String filename = data.substring(firstSpace + 1, secondSpace);
+							// System.out.println("filename " + filename);
+							// File outputFile = new File(filename);
 							// FileOutputStream out = new FileOutputStream(outputFile);
 							// out.write(buf, secondSpace + 1, buflen - secondSpace - 1);
 							// while ((buflen = in.read(buf)) != -1) {
@@ -118,9 +117,9 @@ public class Dstore {
 							// files_to_remove ->
 							// // Controller file_list
 							// int secondSpace = data.indexOf(" ", firstSpace + 1);
-							// String fileName = data.substring(firstSpace + 1, secondSpace);
-							// System.out.println("fileName " + fileName);
-							// File inputFile = new File(fileName);
+							// String filename = data.substring(firstSpace + 1, secondSpace);
+							// System.out.println("filename " + filename);
+							// File inputFile = new File(filename);
 							// FileInputStream inf = new FileInputStream(inputFile);
 							// OutputStream out = client.getOutputStream();
 							// while ((buflen = inf.read(buf)) != -1) {
@@ -199,31 +198,29 @@ public class Dstore {
 											System.out.println("Acknowleded for Wrote file : " + filename);
 										} else
 
-										// if (command.equals("LOAD_DATA")) { // Client LOAD_DATA filename ->
-										// file_content
-										// int secondSpace = data.indexOf(" ", firstSpace + 1);
-										// String fileName = data.substring(firstSpace + 1, secondSpace);
-										// System.out.println("fileName " + fileName);
-										// File inputFile = new File(fileName);
-										// FileInputStream inf = new FileInputStream(inputFile);
-										// OutputStream out = client.getOutputStream();
-										// while ((buflen = inf.read(buf)) != -1) {
-										// System.out.print("*");
-										// out.write(buf, 0, buflen);
-										// }
-										// in.close();
-										// inf.close();
-										// client.close();
-										// out.close();
-										// } else
+										if (command.equals("LOAD_DATA")) { // Client LOAD_DATA filename -> file_content
+											System.out.println("ENTERED LOAD FOR FILE: " + data);
+											String filename = data;
+											File existingFile = new File(path + File.separator + filename);
+											if(!existingFile.exists() || !existingFile.isFile()){client.close();return;} // closes connection and exits thread
+
+											int filesize = (int) existingFile.length(); // casting long to int file size limited to fat32
+											FileInputStream inf = new FileInputStream(existingFile);
+											OutputStream out = client.getOutputStream();
+											out.write(inf.readNBytes(filesize));
+											inf.close();
+											out.close();
+											client.close();
+											return;
+										} else
 
 										// if (command.equals("REMOVE")) { // Controller REMOVE filename ->
 										// Controller
 										// REMOVE_ACK filename
 										// int secondSpace = data.indexOf(" ", firstSpace + 1);
-										// String fileName = data.substring(firstSpace + 1, secondSpace);
-										// System.out.println("fileName " + fileName);
-										// File outputFile = new File(fileName);
+										// String filename = data.substring(firstSpace + 1, secondSpace);
+										// System.out.println("filename " + filename);
+										// File outputFile = new File(filename);
 										// FileOutputStream out = new FileOutputStream(outputFile);
 										// out.write(buf, secondSpace + 1, buflen - secondSpace - 1);
 										// while ((buflen = in.read(buf)) != -1) {
@@ -249,9 +246,9 @@ public class Dstore {
 										// files_to_remove ->
 										// // Controller file_list
 										// int secondSpace = data.indexOf(" ", firstSpace + 1);
-										// String fileName = data.substring(firstSpace + 1, secondSpace);
-										// System.out.println("fileName " + fileName);
-										// File inputFile = new File(fileName);
+										// String filename = data.substring(firstSpace + 1, secondSpace);
+										// System.out.println("filename " + filename);
+										// File inputFile = new File(filename);
 										// FileInputStream inf = new FileInputStream(inputFile);
 										// OutputStream out = client.getOutputStream();
 										// while ((buflen = inf.read(buf)) != -1) {
