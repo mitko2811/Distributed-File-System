@@ -39,7 +39,6 @@ public class Dstore {
 				PrintWriter outController = new PrintWriter(controller.getOutputStream());
 				InputStream in = controller.getInputStream();
 				String data = null;
-				String fileToWrite = "";
 
 				outController.println(Protocol.JOIN_TOKEN + " " + port);
 				outController.flush();
@@ -48,13 +47,6 @@ public class Dstore {
 
 				for (;;) {
 					try {
-						if (fileToWrite != "") { // checks if client thread ready with file write
-							outController.println(Protocol.STORE_ACK_TOKEN + " " + fileToWrite);
-							outController.flush();
-							System.out.println("SEND FILE ACK STORE : " + fileToWrite);
-							fileToWrite = "";
-						}
-
 						data = inController.readLine();
 						if (data != null) {
 							int firstSpace = data.indexOf(" ");
@@ -101,6 +93,21 @@ public class Dstore {
 							// client.close();
 							// out.close();
 							// } else
+							if (command.equals(Protocol.REMOVE_TOKEN)) { // Controller LIST -> Controller file_list
+								System.out.print("Entered Remove from client");
+								String filename = data;
+								File fileRemove = new File(path + File.separator + filename);
+								if(!fileRemove.exists() || !fileRemove.isFile()){
+									outController.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
+									outController.flush();
+									System.out.print("File to delete not existant: " + filename);
+								}else{
+									fileRemove.delete();
+									outController.println(Protocol.REMOVE_ACK_TOKEN);
+									outController.flush();
+									System.out.print("Send Delete ACK to Controller for: " + filename);
+								}
+							} else
 
 							if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
 								System.out.print("Entered list");
@@ -109,7 +116,6 @@ public class Dstore {
 								outController.println(Protocol.LIST_TOKEN + " " + listToSend);
 								outController.flush();
 								System.out.println("Send list");
-								// outController.close();
 							} else
 								System.out.println("unrecognised command");
 
