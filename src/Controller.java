@@ -36,7 +36,7 @@ public class Controller {
 			for (;;) {
 				try {
 					System.out.println("Waiting for connection");
-					Socket client = ss.accept();
+					final Socket client = ss.accept();
 
 					new Thread(() -> {
 						try {
@@ -47,7 +47,7 @@ public class Controller {
 
 							ConcurrentHashMap<String, ArrayList<Integer>> dstore_file_portsLeftReload = new ConcurrentHashMap<String, ArrayList<Integer>>();
 							String data = null;
-							int dstoreport = 0;
+							Integer dstoreport = 0;
 							boolean isDstore = false;
 							for (;;) {
 
@@ -67,7 +67,7 @@ public class Controller {
 									System.out.println("COMMAND RECIEVED \"" + command + "\"");
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.STORE_TOKEN)) { // CLIENT STORE
-										System.out.println("ENTERED STORE FROM CLIENT");
+										System.out.println("ENTERED STORE FROM CLIENT for : " + data);
 										if (Dstore_count < R) {
 											outClient.println(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
 											outClient.flush();
@@ -76,7 +76,7 @@ public class Controller {
 											System.out.println("Test1");
 											String following[] = data.split(" ");
 											String filename = following[0];
-											int filesize = Integer.parseInt(following[1]);
+											Integer filesize = Integer.parseInt(following[1]);
 											System.out.println("Test2");
 											if (file_filesize.get(filename) != null) {
 												outClient.println(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
@@ -129,7 +129,7 @@ public class Controller {
 
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.STORE_ACK_TOKEN)) { // Dstore Store_ACK filename
-										System.out.println("ENTERED STORE ACK");
+										System.out.println("ENTERED STORE ACK for: " + data);
 
 										String filename = data;
 										System.out.println("RECIEVED ACK FOR: " + filename);
@@ -147,43 +147,44 @@ public class Controller {
 											outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 											outClient.flush();
 										} else {
-											dstore_file_portsLeftReload.put(filename,
-													new ArrayList<>(dstore_file_ports.get(filename)));
-											for (Integer port : dstore_file_portsLeftReload.get(filename)) {
-												outClient.println(Protocol.LOAD_FROM_TOKEN + " " + port + " "
-														+ file_filesize.get(filename));
-												outClient.flush();
-												dstore_file_portsLeftReload.get(filename).remove(port);
-												break;
-											}
+											dstore_file_portsLeftReload.put(filename, new ArrayList<>(dstore_file_ports.get(filename)));
+											outClient.println(Protocol.LOAD_FROM_TOKEN + " " + dstore_file_portsLeftReload.get(filename).get(0) + " " + file_filesize.get(filename));
+											outClient.flush();
+											dstore_file_portsLeftReload.get(filename).remove(0);
 										}
 									} else
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.REMOVE_TOKEN)) { // CLIENT REMOVE
 										System.out.println("ENTERED REMOVE FOR FILE: " + data);
 										String filename = data;
-										if (dstore_file_ports.get(filename) == null
-												|| dstore_file_ports.get(filename).isEmpty()) {
+										if (dstore_file_ports.get(filename) == null || dstore_file_ports.get(filename).isEmpty()) {
 											outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
+											outClient.flush();
+											System.out.println("SEND FILE DOES NOT EXIST FOR: " + filename);
 										} else {
 
-											fileToRemove_ACKPorts.put(filename,
-													new ArrayList<>(dstore_file_ports.get(filename))); // initializes the ports that wait for remove
-											for (Integer port : fileToRemove_ACKPorts.get(filename)) { // send ports file to delete
-												Socket dstoreSocket = dstore_port_Socket.get(port);
+											fileToRemove_ACKPorts.put(filename, new ArrayList<>(dstore_file_ports.get(filename))); // initializes the ports that wait for remove
+											ArrayList<Integer> tempACKPORTS = fileToRemove_ACKPorts.get(filename);
+											
+											for (Integer port : tempACKPORTS) { // send ports file to delete
+												Socket dstoreSocket = dstore_port_Socket.get(port);//MUST SYNC THIS LOOP
 												PrintWriter outDstore = new PrintWriter(dstoreSocket.getOutputStream());
 												outDstore.println(Protocol.REMOVE_TOKEN + " " + filename);
+												outDstore.flush();
+												System.out.println("********************* ASKED FOR REMOVE OF FILE: "+ filename +" on port "+ port);
 											}
 
 											boolean success_Remove = false;
 											long timeout_time = System.currentTimeMillis() + timeout;
 											while (System.currentTimeMillis() < timeout_time) {
 												if (fileToRemove_ACKPorts.get(filename).size() == 0) { // checks if file to store has completed acknowledgements
+													System.out.println("ENTERED LOOP TIMES");
 													outClient.println(Protocol.REMOVE_COMPLETE_TOKEN);
 													outClient.flush();
 													System.out.println("SEND STORE COMPLETE ACK FOR: " + filename);
 													fileToRemove_ACKPorts.remove(filename); // remove stored file from fileToStore_ACKPorts queue
 													file_filesize.remove(filename); // add new file's filesize
+													dstore_file_ports.remove(filename);
 													success_Remove = true;
 													break;
 												}
@@ -201,7 +202,7 @@ public class Controller {
 									if (command.equals(Protocol.REMOVE_ACK_TOKEN) || command.equals(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN)) { // Dstore REMOVE_ACK filename
 										System.out.println("ENTERED REMOVE ACK for: " + data);
 										String filename = data;
-										if (!fileToRemove_ACKPorts.get(filename).isEmpty()) {
+										if (fileToRemove_ACKPorts.get(filename)!=null && !fileToRemove_ACKPorts.get(filename).isEmpty()) {
 											fileToRemove_ACKPorts.get(filename).remove(dstoreport); // removing dstore with ack from list
 										}
 										dstore_port_files.get(dstoreport).remove(filename); //removes file from map of port
@@ -211,44 +212,22 @@ public class Controller {
 									} else
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.RELOAD_TOKEN)) { // Client RELOAD
-										System.out.println("ENTERED RELOAD FROM CLIENT");
+										System.out.println("ENTERED RELOAD FROM CLIENT for: " + data);
 										String filename = data;
 
-										if (dstore_file_portsLeftReload.get(filename) != null
-												|| !dstore_file_portsLeftReload.get(filename).isEmpty()) {
-											for (Integer port : dstore_file_ports.get(filename)) {
-												outClient.println(Protocol.LOAD_FROM_TOKEN + " " + port + " "
-														+ file_filesize.get(filename));
-												outClient.flush();
-												dstore_file_portsLeftReload.get(filename).remove(port);
-												break;
-											}
+										if (dstore_file_portsLeftReload.get(filename)!=null && !dstore_file_portsLeftReload.get(filename).isEmpty()) {
+											outClient.println(Protocol.LOAD_FROM_TOKEN + " " + dstore_file_portsLeftReload.get(filename).get(0) + " " + file_filesize.get(filename));
+											outClient.flush();
+											dstore_file_portsLeftReload.get(filename).remove(0);
+											System.out.println("********AFTERRRportsLeftReload******** is " + filename);
 										} else {
 											outClient.println(Protocol.ERROR_LOAD_TOKEN);
 											outClient.flush();
+											System.out.println("SEND ERROR LOAD TO CLIENT FOR FILE: " + filename);
 										}
 
 									} else
 
-									//---------------------------------------------------------------------------------------------------------
-									// if (command.equals(Protocol.RELOAD_TOKEN)) { // Client RELOAD
-									// 	System.out.println("ENTERED RELOAD FROM CLIENT");
-									// 	String filename = data;
-
-									// 	if (dstore_file_portsLeftReload.get(filename) != null) {
-									// 		for (Integer port : dstore_file_ports.get(filename)) {
-									// 			outClient.println(Protocol.LOAD_FROM_TOKEN + " " + port + " "
-									// 					+ file_filesize.get(filename));
-									// 			outClient.flush();
-									// 			dstore_file_portsLeftReload.get(filename).remove(port);
-									// 			break;
-									// 		}
-									// 	} else {
-									// 		outClient.println(Protocol.ERROR_LOAD_TOKEN);
-									// 		outClient.flush();
-									// 	}
-
-									// } else
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.LIST_TOKEN) && data == null) { // Client LIST -> Client LIST file_list
 

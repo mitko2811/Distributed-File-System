@@ -60,52 +60,19 @@ public class Dstore {
 							}
 							System.out.println("RECIEVED CONTROLLER COMMAND: " + command);
 
-							// if (command.equals("LOAD_DATA")) { // Client LOAD_DATA filename -> file_content
-							// System.out.println("ENTERED LOAD FOR FILE: " + data);
-							// String filename = data;
-							// File tmpFile = new File(filename);
-							// File inputFile = new File(filename);
-							// FileInputStream inf = new FileInputStream(inputFile);
-							// OutputStream out = client.getOutputStream();
-							// while ((buflen = inf.read(buf)) != -1) {
-							// System.out.print("*");
-							// out.write(buf, 0, buflen);
-							// }
-							// in.close();
-							// inf.close();
-							// client.close();
-							// out.close();
-							// } else
-
-							// if (command.equals("REMOVE")) { // Controller REMOVE filename -> Controller
-							// REMOVE_ACK filename
-							// int secondSpace = data.indexOf(" ", firstSpace + 1);
-							// String filename = data.substring(firstSpace + 1, secondSpace);
-							// System.out.println("filename " + filename);
-							// File outputFile = new File(filename);
-							// FileOutputStream out = new FileOutputStream(outputFile);
-							// out.write(buf, secondSpace + 1, buflen - secondSpace - 1);
-							// while ((buflen = in.read(buf)) != -1) {
-							// System.out.print("*");
-							// out.write(buf, 0, buflen);
-							// }
-							// in.close();
-							// client.close();
-							// out.close();
-							// } else
 							if (command.equals(Protocol.REMOVE_TOKEN)) { // Controller LIST -> Controller file_list
-								System.out.print("Entered Remove from client");
+								System.out.println("Entered Remove from CONTROLLER");
 								String filename = data;
 								File fileRemove = new File(path + File.separator + filename);
 								if(!fileRemove.exists() || !fileRemove.isFile()){
 									outController.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
 									outController.flush();
-									System.out.print("File to delete not existant: " + filename);
+									System.out.println("File to delete not existant: " + filename);
 								}else{
 									fileRemove.delete();
-									outController.println(Protocol.REMOVE_ACK_TOKEN);
+									outController.println(Protocol.REMOVE_ACK_TOKEN + " " + filename);
 									outController.flush();
-									System.out.print("Send Delete ACK to Controller for: " + filename);
+									System.out.println("Send Delete ACK to Controller for: " + filename);
 								}
 							} else
 
@@ -118,26 +85,6 @@ public class Dstore {
 								System.out.println("Send list");
 							} else
 								System.out.println("unrecognised command");
-
-							// if (command.equals("REBALANCE")) { // Controller REBALANCE files_to_send
-							// files_to_remove ->
-							// // Controller file_list
-							// int secondSpace = data.indexOf(" ", firstSpace + 1);
-							// String filename = data.substring(firstSpace + 1, secondSpace);
-							// System.out.println("filename " + filename);
-							// File inputFile = new File(filename);
-							// FileInputStream inf = new FileInputStream(inputFile);
-							// OutputStream out = client.getOutputStream();
-							// while ((buflen = inf.read(buf)) != -1) {
-							// System.out.print("*");
-							// out.write(buf, 0, buflen);
-							// }
-							// in.close();
-							// inf.close();
-							// client.close();
-							// out.close();
-							// } else
-							// System.out.println("unrecognised command");
 						} else{controller.close();break; }
 					} catch (Exception e) {
 						System.out.println("Controller error1 " + e);
@@ -204,7 +151,7 @@ public class Dstore {
 											System.out.println("Acknowleded for Wrote file : " + filename);
 										} else
 
-										if (command.equals("LOAD_DATA")) { // Client LOAD_DATA filename -> file_content
+										if (command.equals(Protocol.LOAD_DATA_TOKEN)) { // Client LOAD_DATA filename -> file_content
 											System.out.println("ENTERED LOAD FOR FILE: " + data);
 											String filename = data;
 											File existingFile = new File(path + File.separator + filename);
@@ -220,24 +167,6 @@ public class Dstore {
 											return;
 										} else
 
-										// if (command.equals("REMOVE")) { // Controller REMOVE filename ->
-										// Controller
-										// REMOVE_ACK filename
-										// int secondSpace = data.indexOf(" ", firstSpace + 1);
-										// String filename = data.substring(firstSpace + 1, secondSpace);
-										// System.out.println("filename " + filename);
-										// File outputFile = new File(filename);
-										// FileOutputStream out = new FileOutputStream(outputFile);
-										// out.write(buf, secondSpace + 1, buflen - secondSpace - 1);
-										// while ((buflen = in.read(buf)) != -1) {
-										// System.out.print("*");
-										// out.write(buf, 0, buflen);
-										// }
-										// in.close();
-										// client.close();
-										// out.close();
-										// } else
-
 										if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
 											String[] fileList = folder.list();
 											String listToSend = String.join(" ", fileList);
@@ -246,27 +175,6 @@ public class Dstore {
 											// outController.close();
 										} else
 											System.out.println("unrecognised command");
-
-										// if (command.equals("REBALANCE")) { // Controller REBALANCE
-										// files_to_send
-										// files_to_remove ->
-										// // Controller file_list
-										// int secondSpace = data.indexOf(" ", firstSpace + 1);
-										// String filename = data.substring(firstSpace + 1, secondSpace);
-										// System.out.println("filename " + filename);
-										// File inputFile = new File(filename);
-										// FileInputStream inf = new FileInputStream(inputFile);
-										// OutputStream out = client.getOutputStream();
-										// while ((buflen = inf.read(buf)) != -1) {
-										// System.out.print("*");
-										// out.write(buf, 0, buflen);
-										// }
-										// in.close();
-										// inf.close();
-										// client.close();
-										// out.close();
-										// } else
-										// System.out.println("unrecognised command");
 									} else {client.close();break;}
 								} catch (Exception e) {
 									System.out.println("Client error1 " + e);
