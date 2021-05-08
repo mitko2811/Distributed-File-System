@@ -7,6 +7,7 @@ public class Dstore {
 	static Integer timeout;
 	static String file_folder;
 	private static Dstore dstore;
+	private boolean controller_fail = false;
 
 	public Dstore(int port, int cport, int timeout, String file_folder) {
 		Dstore.port = port;
@@ -44,8 +45,8 @@ public class Dstore {
 				outController.flush();
 				System.out.println("Entering loop of Controller");
 
-				for (;;) {
-					try {
+				try {
+					for (;;) {
 						data = inController.readLine();
 						if (data != null) {
 							int firstSpace = data.indexOf(" ");
@@ -83,20 +84,28 @@ public class Dstore {
 								outController.flush();
 								System.out.println("Send list");
 							} else
-								System.out.println("unrecognised command");
+								System.out.println("Unrecognised command");
 						} else {
-							controller.close();
+							if (controller.isConnected())
+								controller.close();
+							controller_fail = true;
 							break;
 						}
-					} catch (Exception e) {
-						System.out.println("Controller error1 " + e);
 					}
+				} catch (Exception e) {
+					System.out.println("Controller Disconnected Error: " + e);
+					if (controller.isConnected())
+						controller.close();
+					controller_fail = true;
 				}
 			} catch (Exception e) {
-				System.out.println("Controller error2 " + e);
+				System.out.println("Initial Controller connection error: " + e);
+				controller_fail = true;
 			}
 		}).start();
 
+		if (controller_fail)
+			return; //exit if controller connection had failed
 		System.out.println("GOING TO CLIENT PART");
 		/* ---------------------------------CLIENTS PART----------------------------------------------*/
 		try {
