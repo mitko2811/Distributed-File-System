@@ -3,9 +3,7 @@ import java.net.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -91,7 +89,7 @@ public class Controller {
 										} else {
 											synchronized (this) {
 												if (files_activeStore.contains(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
-													outClient.println("ERROR ALREADY_EXISTS");
+													outClient.println(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
 													outClient.flush();
 													continue;
 												} else {
@@ -154,33 +152,49 @@ public class Controller {
 									} else
 
 									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.LOAD_TOKEN)) { // Client LOAD
+									if (command.equals(Protocol.LOAD_TOKEN) || command.equals(Protocol.RELOAD_TOKEN)) { // Client LOAD
 										if(data.length!=2){continue;} // log error and continue
-										System.out.println("ENTERED LOAD FROM CLIENT for file: " + data[1]);
+										System.out.println("ENTERED LOAD/RELOAD FROM CLIENT for file: " + data[1]);
 										String filename = data[1];
 										if (Dstore_count.get() < R) {
 											outClient.println(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
 											outClient.flush();
-											System.out.println(
-													"SEND NOT ENOUGH DSTORES FOR REMOVE ERROR for: " + filename);
+											System.out.println("SEND NOT ENOUGH DSTORES FOR REMOVE ERROR for: " + filename);
 										} else {
-											if (!dstore_file_ports.containsKey(filename)
-													|| files_activeStore.contains(filename)
-													|| files_activeRemove.contains(filename)) { // CHECKS FILE CONTAINS AND INDEX
+											if (!file_filesize.containsKey(filename)) { // CHECKS FILE CONTAINS AND INDEX
 												outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 												outClient.flush();
-												System.out.println(
-														"SEND ERROR_FILE_DOES_NOT_EXIST_TOKEN for: " + filename);
+												System.out.println("SEND ERROR_FILE_DOES_NOT_EXIST_TOKEN for: " + filename);
 											} else {
-												dstore_file_portsLeftReload.put(filename,
-														new ArrayList<>(dstore_file_ports.get(filename)));
-												outClient.println(Protocol.LOAD_FROM_TOKEN + " "
-														+ dstore_file_portsLeftReload.get(filename).get(0) + " "
-														+ file_filesize.get(filename));
-												outClient.flush();
-												dstore_file_portsLeftReload.get(filename).remove(0);
+												synchronized (this) {
+													if (files_activeStore.contains(filename) || files_activeRemove.contains(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
+														outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
+														outClient.flush();
+														continue;
+													} 
+												}
+												if(command.equals(Protocol.LOAD_TOKEN)){
+													System.out.println("IT WAS LOAD FROM CLIENT for file: " + data[1]);
+													dstore_file_portsLeftReload.put(filename,new ArrayList<>(dstore_file_ports.get(filename)));
+													outClient.println(Protocol.LOAD_FROM_TOKEN + " " + dstore_file_portsLeftReload.get(filename).get(0) + " " + file_filesize.get(filename));
+													outClient.flush();
+													dstore_file_portsLeftReload.get(filename).remove(0);
+												} else{
+													System.out.println("IT WAS RELOAD FROM CLIENT for file: " + data[1]);
+													if (dstore_file_portsLeftReload.get(filename) != null && !dstore_file_portsLeftReload.get(filename).isEmpty()) {
+														outClient.println(Protocol.LOAD_FROM_TOKEN + " " + dstore_file_portsLeftReload.get(filename).get(0) + " " + file_filesize.get(filename));
+														outClient.flush();
+														dstore_file_portsLeftReload.get(filename).remove(0);
+														System.out.println("********AFTERRRportsLeftReload******** is " + filename);
+													} else {
+														outClient.println(Protocol.ERROR_LOAD_TOKEN);
+														outClient.flush();
+														System.out.println("SEND ERROR LOAD TO CLIENT FOR FILE: " + filename);
+													}
+												}
+
 											}
-											System.out.println("EXITED LOAD FROM CLIENT for file: " + filename);
+											System.out.println("EXITED LOAD/reload FROM CLIENT for file: " + filename);
 										}
 									} else
 									//---------------------------------------------------------------------------------------------------------
@@ -202,7 +216,7 @@ public class Controller {
 										} else {
 											synchronized (this) {
 												if (files_activeRemove.contains(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
-													outClient.println("ERROR ALREADY_EXISTS");
+													outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 													outClient.flush();
 													continue;
 												} else {
@@ -241,8 +255,9 @@ public class Controller {
 											if (!success_Remove) {
 												System.out.println("FAILED STORE: " + filename);
 											}
-											files_activeRemove.remove(filename); // remove file ActiveRemove from INDEX
+
 											fileToRemove_ACKPorts.remove(filename);
+											files_activeRemove.remove(filename); // remove file ActiveRemove from INDEX
 											System.out.println("EXITED REMOVE for: " + filename);
 										}
 
@@ -262,31 +277,6 @@ public class Controller {
 										dstore_port_numbfiles.put(dstoreport,
 												dstore_port_numbfiles.get(dstoreport) - 1); // suspend 1 from file count
 										dstore_file_ports.get(filename).remove(dstoreport); // remove port from file - ports map
-									} else
-									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.RELOAD_TOKEN)) { // Client RELOAD
-										if(data.length!=2){continue;} // log error and continue
-										System.out.println("ENTERED RELOAD FROM CLIENT for: " + data[1]);
-										String filename = data[1];
-
-										if (Dstore_count.get() < R || (files_activeStore.contains(filename)
-												|| files_activeRemove.contains(filename))) {
-											outClient.println(Protocol.ERROR_LOAD_TOKEN);
-											outClient.flush();
-											System.out.println("SEND NOT ENOUGH DSTORES FOR RELOAD for: " + filename);
-										} else if (dstore_file_portsLeftReload.get(filename) != null
-												&& !dstore_file_portsLeftReload.get(filename).isEmpty()) {
-											outClient.println(Protocol.LOAD_FROM_TOKEN + " "
-													+ dstore_file_portsLeftReload.get(filename).get(0) + " "
-													+ file_filesize.get(filename));
-											outClient.flush();
-											dstore_file_portsLeftReload.get(filename).remove(0);
-											System.out.println("********AFTERRRportsLeftReload******** is " + filename);
-										} else {
-											outClient.println(Protocol.ERROR_LOAD_TOKEN);
-											outClient.flush();
-											System.out.println("SEND ERROR LOAD TO CLIENT FOR FILE: " + filename);
-										}
 									} else
 
 									//---------------------------------------------------------------------------------------------------------

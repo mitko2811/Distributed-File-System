@@ -6,7 +6,6 @@ public class Dstore {
 	static Integer cport;
 	static Integer timeout;
 	static String file_folder;
-	private static Dstore dstore;
 	private boolean controller_fail = false;
 
 	public Dstore(int port, int cport, int timeout, String file_folder) {
@@ -108,8 +107,7 @@ public class Dstore {
 			}
 		}).start();
 
-		if (controller_fail)
-			return; //exit if controller connection had failed
+		if (controller_fail)return; //exit if controller connection had failed
 		System.out.println("GOING TO CLIENT PART");
 		/* ---------------------------------CLIENTS PART----------------------------------------------*/
 		try {
@@ -157,7 +155,7 @@ public class Dstore {
 
 										File outputFile = new File(path + File.separator + filename);
 										FileOutputStream out = new FileOutputStream(outputFile);
-										out.write(in.readNBytes(filesize));
+										out.write(in.readNBytes(filesize)); // possible threadlock?? maybe
 										out.flush();
 										out.close();
 										outController.println(Protocol.STORE_ACK_TOKEN + " " + filename);
@@ -179,7 +177,7 @@ public class Dstore {
 
 										int filesize = (int) existingFile.length(); // casting long to int file size limited to fat32
 										FileInputStream inf = new FileInputStream(existingFile);
-										OutputStream out = client.getOutputStream();
+										OutputStream out = client.getOutputStream();								
 										out.write(inf.readNBytes(filesize));
 										out.flush();
 										inf.close();
@@ -215,6 +213,6 @@ public class Dstore {
 		cport = Integer.parseInt(args[1]);
 		timeout = Integer.parseInt(args[2]);
 		file_folder = args[3];
-		dstore = new Dstore(port, cport, timeout, file_folder);
+		Dstore dstore = new Dstore(port, cport, timeout, file_folder);
 	}
 }
