@@ -39,7 +39,7 @@ public class Dstore {
 				BufferedReader inController = new BufferedReader(new InputStreamReader(controller.getInputStream()));
 				PrintWriter outController = new PrintWriter(controller.getOutputStream());
 				InputStream in = controller.getInputStream();
-				String data = null;
+				String dataline = null;
 
 				outController.println(Protocol.JOIN_TOKEN + " " + port);
 				outController.flush();
@@ -47,22 +47,25 @@ public class Dstore {
 
 				try {
 					for (;;) {
-						data = inController.readLine();
-						if (data != null) {
-							int firstSpace = data.indexOf(" ");
+						dataline = inController.readLine();
+						if (dataline != null) {
+							String[] data = dataline.split(" ");
 							String command;
-							if (firstSpace == -1) {
-								command = data;
-								data = "";
+							if (data.length==1) {
+								command = dataline.trim();
+								data[0] = command;
+								dataline = null;
 							} else {
-								command = data.substring(0, firstSpace);
-								data = data.substring(firstSpace + 1);
+								command = data[0];
+								data[data.length-1] = data[data.length-1].trim();
+								dataline = null;
 							}
 							System.out.println("RECIEVED CONTROLLER COMMAND: " + command);
 
 							if (command.equals(Protocol.REMOVE_TOKEN)) { // Controller LIST -> Controller file_list
+								if(data.length!=2){continue;} // log error and continue
 								System.out.println("Entered Remove from CONTROLLER");
-								String filename = data;
+								String filename = data[1];
 								File fileRemove = new File(path + File.separator + filename);
 								if (!fileRemove.exists() || !fileRemove.isFile()) {
 									outController.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
@@ -77,17 +80,18 @@ public class Dstore {
 							} else
 
 							if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
-								System.out.print("Entered list");
+								if(data.length!=1){continue;} // log error and continue
+								System.out.println("Entered list");
 								String[] fileList = folder.list();
 								String listToSend = String.join(" ", fileList);
 								outController.println(Protocol.LIST_TOKEN + " " + listToSend);
 								outController.flush();
 								System.out.println("Send list");
-							} else
-								System.out.println("Unrecognised command");
+							} else {
+								System.out.println("Unrecognised command"); //log and continue
+							}
 						} else {
-							if (controller.isConnected())
-								controller.close();
+							if (controller.isConnected())controller.close();
 							controller_fail = true;
 							break;
 						}
@@ -122,32 +126,32 @@ public class Dstore {
 						BufferedReader inClient = new BufferedReader(new InputStreamReader(client.getInputStream()));
 						PrintWriter outClient = new PrintWriter(client.getOutputStream());
 
-						String data = null;
+						String dataline = null;
 						InputStream in = client.getInputStream();
 						System.out.println("Client Connected");
 
 						for (;;) {
 							try {
-								data = inClient.readLine();
-								if (data != null) {
-									int firstSpace = data.indexOf(" ");
+								dataline = inClient.readLine();
+								if (dataline != null) {
+									String[] data = dataline.split(" ");
 									String command;
-
-									if (firstSpace == -1) {
-										command = data;
-										data = "";
+									if (data.length==1) {
+										command = dataline.trim();
+										data[0] = command;
+										dataline = null;
 									} else {
-										command = data.substring(0, firstSpace);
-										data = data.substring(firstSpace + 1);
+										command = data[0];
+										data[data.length-1] = data[data.length-1].trim();
+										dataline = null;
 									}
 									System.out.println("RECIEVED CLIENT COMMAND: " + command);
 
 									if (command.equals(Protocol.STORE_TOKEN)) {
+										if(data.length!=3){continue;} // log error and continue
 										System.out.println("ENTERED STORE FROM CLIENT");
-
-										String following[] = data.split(" ");
-										String filename = following[0];
-										int filesize = Integer.parseInt(following[1]);
+										String filename = data[1];
+										int filesize = Integer.parseInt(data[2]);
 										outClient.println(Protocol.ACK_TOKEN);
 										outClient.flush();
 
@@ -159,11 +163,14 @@ public class Dstore {
 										outController.println(Protocol.STORE_ACK_TOKEN + " " + filename);
 										outController.flush();
 										System.out.println("Acknowleded for Wrote file : " + filename);
+										client.close();
+										return;
 									} else
 
 									if (command.equals(Protocol.LOAD_DATA_TOKEN)) { // Client LOAD_DATA filename -> file_content
-										System.out.println("ENTERED LOAD FOR FILE: " + data);
-										String filename = data;
+										if(data.length!=2){continue;} // log error and continue
+										System.out.println("ENTERED LOAD FOR FILE: " + data[1]);
+										String filename = data[1];
 										File existingFile = new File(path + File.separator + filename);
 										if (!existingFile.exists() || !existingFile.isFile()) {
 											client.close();
@@ -174,12 +181,15 @@ public class Dstore {
 										FileInputStream inf = new FileInputStream(existingFile);
 										OutputStream out = client.getOutputStream();
 										out.write(inf.readNBytes(filesize));
+										out.flush();
 										inf.close();
 										out.close();
 										client.close();
 										return;
-									} else
-										System.out.println("unrecognised command");
+									} else{
+										System.out.println("Unrecognised Command!");
+										continue; // log error
+									}
 								} else {
 									client.close();
 									break;
