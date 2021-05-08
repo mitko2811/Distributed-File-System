@@ -179,14 +179,6 @@ public class Dstore {
 										client.close();
 										return;
 									} else
-
-									if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
-										String[] fileList = folder.list();
-										String listToSend = String.join(" ", fileList);
-										outClient.println(Protocol.LIST_TOKEN + " " + listToSend);
-										outClient.flush();
-										// outController.close();
-									} else
 										System.out.println("unrecognised command");
 								} else {
 									client.close();
