@@ -24,8 +24,8 @@ public class Controller {
 	ConcurrentHashMap<String, Integer> file_filesize = new ConcurrentHashMap<String, Integer>();
 	ConcurrentHashMap<Integer, Socket> dstore_port_Socket = new ConcurrentHashMap<Integer, Socket>();
 	ConcurrentHashMap<String, ArrayList<Integer>> fileToRemove_ACKPorts = new ConcurrentHashMap<String, ArrayList<Integer>>();
-	List<String> files_activeStore = Collections.synchronizedList(new ArrayList<String>());
-	List<String> files_activeRemove = Collections.synchronizedList(new ArrayList<String>());
+	List<String> files_activeStore = Collections.synchronizedList(new ArrayList<String>()); // index of active file stores
+	List<String> files_activeRemove = Collections.synchronizedList(new ArrayList<String>()); // index of active file removes
 
 	public Controller(int cport, int R, int timeout, int rebalance_period) {
 		this.cport = cport;
