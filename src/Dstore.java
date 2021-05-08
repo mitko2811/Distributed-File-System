@@ -2,9 +2,9 @@ import java.io.*;
 import java.net.*;
 
 public class Dstore {
-	static int port;
-	static int cport;
-	static int timeout;
+	static Integer port;
+	static Integer cport;
+	static Integer timeout;
 	static String file_folder;
 	private static Dstore dstore;
 
@@ -26,7 +26,7 @@ public class Dstore {
 			if (!folder.mkdir())
 				throw new RuntimeException("Cannot create new folder in " + folder.getAbsolutePath());
 		final String path = folder.getAbsolutePath(); // path of folder
-		for(File file: folder.listFiles()) // delete every file in directory if any
+		for (File file : folder.listFiles()) // delete every file in directory if any
 		{
 			file.delete();
 		}
@@ -42,7 +42,6 @@ public class Dstore {
 
 				outController.println(Protocol.JOIN_TOKEN + " " + port);
 				outController.flush();
-
 				System.out.println("Entering loop of Controller");
 
 				for (;;) {
@@ -64,11 +63,11 @@ public class Dstore {
 								System.out.println("Entered Remove from CONTROLLER");
 								String filename = data;
 								File fileRemove = new File(path + File.separator + filename);
-								if(!fileRemove.exists() || !fileRemove.isFile()){
+								if (!fileRemove.exists() || !fileRemove.isFile()) {
 									outController.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
 									outController.flush();
 									System.out.println("File to delete not existant: " + filename);
-								}else{
+								} else {
 									fileRemove.delete();
 									outController.println(Protocol.REMOVE_ACK_TOKEN + " " + filename);
 									outController.flush();
@@ -85,7 +84,10 @@ public class Dstore {
 								System.out.println("Send list");
 							} else
 								System.out.println("unrecognised command");
-						} else{controller.close();break; }
+						} else {
+							controller.close();
+							break;
+						}
 					} catch (Exception e) {
 						System.out.println("Controller error1 " + e);
 					}
@@ -100,91 +102,96 @@ public class Dstore {
 		try {
 			ServerSocket ss = new ServerSocket(port);
 			for (;;) {
-					System.out.println("Client waiting");
-					Socket client = ss.accept();
-					new Thread(() -> { // CLIENTS
-						try {
-							System.out.println("Client NEW THEREAD");
-							BufferedReader inController = new BufferedReader(
-									new InputStreamReader(controller.getInputStream()));
-							PrintWriter outController = new PrintWriter(controller.getOutputStream());
-							BufferedReader inClient = new BufferedReader(
-									new InputStreamReader(client.getInputStream()));
-							PrintWriter outClient = new PrintWriter(client.getOutputStream());
+				System.out.println("Client waiting");
+				Socket client = ss.accept();
+				new Thread(() -> { // CLIENTS
+					try {
+						System.out.println("Client NEW THEREAD");
+						BufferedReader inController = new BufferedReader(
+								new InputStreamReader(controller.getInputStream()));
+						PrintWriter outController = new PrintWriter(controller.getOutputStream());
+						BufferedReader inClient = new BufferedReader(new InputStreamReader(client.getInputStream()));
+						PrintWriter outClient = new PrintWriter(client.getOutputStream());
 
-							String data = null;
-							InputStream in = client.getInputStream();
-							System.out.println("Client Connected");
+						String data = null;
+						InputStream in = client.getInputStream();
+						System.out.println("Client Connected");
 
-							for (;;) {
-								try {
-									data = inClient.readLine();
-									if (data != null) {
-										int firstSpace = data.indexOf(" ");
-										String command;
+						for (;;) {
+							try {
+								data = inClient.readLine();
+								if (data != null) {
+									int firstSpace = data.indexOf(" ");
+									String command;
 
-										if (firstSpace == -1) {
-											command = data;
-											data = "";
-										} else {
-											command = data.substring(0, firstSpace);
-											data = data.substring(firstSpace + 1);
-										}
-										System.out.println("RECIEVED CLIENT COMMAND: " + command);
+									if (firstSpace == -1) {
+										command = data;
+										data = "";
+									} else {
+										command = data.substring(0, firstSpace);
+										data = data.substring(firstSpace + 1);
+									}
+									System.out.println("RECIEVED CLIENT COMMAND: " + command);
 
-										if (command.equals(Protocol.STORE_TOKEN)) {
-											System.out.println("ENTERED STORE FROM CLIENT");
+									if (command.equals(Protocol.STORE_TOKEN)) {
+										System.out.println("ENTERED STORE FROM CLIENT");
 
-											String following[] = data.split(" ");
-											String filename = following[0];
-											int filesize = Integer.parseInt(following[1]);
-											outClient.println(Protocol.ACK_TOKEN);
-											outClient.flush();
+										String following[] = data.split(" ");
+										String filename = following[0];
+										int filesize = Integer.parseInt(following[1]);
+										outClient.println(Protocol.ACK_TOKEN);
+										outClient.flush();
 
-											File outputFile = new File(path + File.separator + filename);
-											FileOutputStream out = new FileOutputStream(outputFile);
-											out.write(in.readNBytes(filesize));
-											out.flush();
-											out.close();
-											outController.println(Protocol.STORE_ACK_TOKEN + " " + filename);
-											outController.flush();
-											System.out.println("Acknowleded for Wrote file : " + filename);
-										} else
+										File outputFile = new File(path + File.separator + filename);
+										FileOutputStream out = new FileOutputStream(outputFile);
+										out.write(in.readNBytes(filesize));
+										out.flush();
+										out.close();
+										outController.println(Protocol.STORE_ACK_TOKEN + " " + filename);
+										outController.flush();
+										System.out.println("Acknowleded for Wrote file : " + filename);
+									} else
 
-										if (command.equals(Protocol.LOAD_DATA_TOKEN)) { // Client LOAD_DATA filename -> file_content
-											System.out.println("ENTERED LOAD FOR FILE: " + data);
-											String filename = data;
-											File existingFile = new File(path + File.separator + filename);
-											if(!existingFile.exists() || !existingFile.isFile()){client.close();return;} // closes connection and exits thread
-
-											int filesize = (int) existingFile.length(); // casting long to int file size limited to fat32
-											FileInputStream inf = new FileInputStream(existingFile);
-											OutputStream out = client.getOutputStream();
-											out.write(inf.readNBytes(filesize));
-											inf.close();
-											out.close();
+									if (command.equals(Protocol.LOAD_DATA_TOKEN)) { // Client LOAD_DATA filename -> file_content
+										System.out.println("ENTERED LOAD FOR FILE: " + data);
+										String filename = data;
+										File existingFile = new File(path + File.separator + filename);
+										if (!existingFile.exists() || !existingFile.isFile()) {
 											client.close();
 											return;
-										} else
+										} // closes connection and exits thread
 
-										if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
-											String[] fileList = folder.list();
-											String listToSend = String.join(" ", fileList);
-											outClient.println(Protocol.LIST_TOKEN + " " + listToSend);
-											outClient.flush();
-											// outController.close();
-										} else
-											System.out.println("unrecognised command");
-									} else {client.close();break;}
-								} catch (Exception e) {
-									System.out.println("Client error1 " + e);
+										int filesize = (int) existingFile.length(); // casting long to int file size limited to fat32
+										FileInputStream inf = new FileInputStream(existingFile);
+										OutputStream out = client.getOutputStream();
+										out.write(inf.readNBytes(filesize));
+										inf.close();
+										out.close();
+										client.close();
+										return;
+									} else
+
+									if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
+										String[] fileList = folder.list();
+										String listToSend = String.join(" ", fileList);
+										outClient.println(Protocol.LIST_TOKEN + " " + listToSend);
+										outClient.flush();
+										// outController.close();
+									} else
+										System.out.println("unrecognised command");
+								} else {
+									client.close();
+									break;
 								}
+							} catch (Exception e) {
+								System.out.println("Client error1 " + e);
 							}
-
-						} catch (Exception e) {
-							System.out.println("Client error2 " + e);
 						}
-					}).start();
+
+					} catch (Exception e) {
+						System.out.println("Client error2 " + e);
+					}
+				}).start();
 			}
 		} catch (Exception e) {
 			System.out.println("Client error3 " + e);
