@@ -350,7 +350,7 @@ public class Controller {
 									} else
 
 									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.LIST_TOKEN) && isDstore && activeList) { // DSTORE LIST
+									if (command.equals(Protocol.LIST_TOKEN) && isDstore) { // DSTORE LIST //for rebalance add && activeList
 										ArrayList<String> filelist = new ArrayList<String>(Arrays.asList(data));
 										filelist.remove(Protocol.LIST_TOKEN); // remove command entry
 										dstore_port_numbfiles.put(dstoreport, filelist.size()); // updates port/numbfiles hashmap
@@ -395,13 +395,14 @@ public class Controller {
 										continue; // log error
 									}
 								} else {
-									if (isDstore)Dstore_count.decrementAndGet(); //decrease count if dstore disconnected
-									while(activeRebalance){
-										continue;
-									}
-									clearPort(dstoreport); // clear port data if dstore disonnected
-									client.close();
-									break;
+									if (isDstore){
+										while(activeRebalance){
+											continue;
+										}
+										Dstore_count.decrementAndGet(); //decrease count if dstore disconnected
+										if(dstore_port_Socket.containsKey(dstoreport)){clearPort(dstoreport);} // clear port data if dstore disonnected
+										client.close(); break;
+									} else {client.close(); break;}
 								}
 							}
 						} catch (Exception e) {
