@@ -78,6 +78,12 @@ public class Dstore {
 								}
 							} else
 
+							if (command.equals(Protocol.REBALANCE_TOKEN)) { // Controller LIST -> Controller file_list
+								//if(data.length!=2){continue;} // log error and continue
+								System.out.println("Entered REBALANCE from CONTROLLER");
+								
+							} else
+
 							if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
 								if(data.length!=1){continue;} // log error and continue
 								System.out.println("Entered list");
@@ -140,26 +146,24 @@ public class Dstore {
 										dataline = null;
 									} else {
 										command = data[0];
-										data[data.length-1] = data[data.length-1].trim();
-										dataline = null;
+										//dataline = null;
 									}
 									System.out.println("RECIEVED CLIENT COMMAND: " + command);
 
 									if (command.equals(Protocol.STORE_TOKEN)) {
 										if(data.length!=3){continue;} // log error and continue
+										outClient.println(Protocol.ACK_TOKEN);
+										outClient.flush();
 										System.out.println("ENTERED STORE FROM CLIENT");
 										String filename = data[1];
 										int filesize = Integer.parseInt(data[2]);
-										outClient.println(Protocol.ACK_TOKEN);
-										outClient.flush();
-
 										File outputFile = new File(path + File.separator + filename);
 										FileOutputStream out = new FileOutputStream(outputFile);
 										out.write(in.readNBytes(filesize)); // possible threadlock?? maybe
 										out.flush();
-										out.close();
 										outController.println(Protocol.STORE_ACK_TOKEN + " " + filename);
 										outController.flush();
+										out.close();
 										System.out.println("Acknowleded for Wrote file : " + filename);
 										client.close();
 										return;
