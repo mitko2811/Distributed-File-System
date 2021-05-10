@@ -36,7 +36,7 @@ public class Dstore {
 		new Thread(() -> { // CONTROLLER
 			try {
 				BufferedReader inController = new BufferedReader(new InputStreamReader(controller.getInputStream()));
-				PrintWriter outController = new PrintWriter(controller.getOutputStream());
+				PrintWriter outController = new PrintWriter(controller.getOutputStream(),true);
 				InputStream in = controller.getInputStream();
 				String dataline = null;
 
@@ -68,12 +68,12 @@ public class Dstore {
 								File fileRemove = new File(path + File.separator + filename);
 								if (!fileRemove.exists() || !fileRemove.isFile()) {
 									outController.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
-									outController.flush();
+									//outController.flush();
 									System.out.println("File to delete not existant: " + filename);
 								} else {
 									fileRemove.delete();
 									outController.println(Protocol.REMOVE_ACK_TOKEN + " " + filename);
-									outController.flush();
+									//outController.flush();
 									System.out.println("Send Delete ACK to Controller for: " + filename);
 								}
 							} else
@@ -90,7 +90,7 @@ public class Dstore {
 								String[] fileList = folder.list();
 								String listToSend = String.join(" ", fileList);
 								outController.println(Protocol.LIST_TOKEN + " " + listToSend);
-								outController.flush();
+								//outController.flush();
 								System.out.println("Send list");
 							} else {
 								System.out.println("Unrecognised command"); //log and continue
@@ -126,9 +126,9 @@ public class Dstore {
 						System.out.println("Client NEW THEREAD");
 						BufferedReader inController = new BufferedReader(
 								new InputStreamReader(controller.getInputStream()));
-						PrintWriter outController = new PrintWriter(controller.getOutputStream());
+						PrintWriter outController = new PrintWriter(controller.getOutputStream(),true);
 						BufferedReader inClient = new BufferedReader(new InputStreamReader(client.getInputStream()));
-						PrintWriter outClient = new PrintWriter(client.getOutputStream());
+						PrintWriter outClient = new PrintWriter(client.getOutputStream(),true);
 
 						String dataline = null;
 						InputStream in = client.getInputStream();
@@ -151,20 +151,17 @@ public class Dstore {
 									System.out.println("RECIEVED CLIENT COMMAND: " + command);
 
 									if (command.equals(Protocol.STORE_TOKEN)) {
-										if(data.length!=3){continue;} // log error and continue
+										//if(data.length!=3){continue;} // log error and continue
 										outClient.println(Protocol.ACK_TOKEN);
-										outClient.flush();
 										System.out.println("ENTERED STORE FROM CLIENT");
-										String filename = data[1];
+										//String filename = data[1];
 										int filesize = Integer.parseInt(data[2]);
-										File outputFile = new File(path + File.separator + filename);
+										File outputFile = new File(path + File.separator + data[1]);
 										FileOutputStream out = new FileOutputStream(outputFile);
 										out.write(in.readNBytes(filesize)); // possible threadlock?? maybe
-										out.flush();
-										outController.println(Protocol.STORE_ACK_TOKEN + " " + filename);
-										outController.flush();
+										outController.println(Protocol.STORE_ACK_TOKEN + " " + data[1]);
 										out.close();
-										System.out.println("Acknowleded for Wrote file : " + filename);
+										System.out.println("Acknowleded for Wrote file : " + data[1]);
 										client.close();
 										return;
 									} else
@@ -198,6 +195,8 @@ public class Dstore {
 								}
 							} catch (Exception e) {
 								System.out.println("Client error1 " + e);
+								client.close();
+								break;
 							}
 						}
 
