@@ -2,17 +2,18 @@ import java.io.*;
 import java.net.*;
 
 public class Dstore {
-	static Integer port;
-	static Integer cport;
-	static Integer timeout;
-	static String file_folder;
+	private Integer port;
+	private Integer cport;
+	private Integer timeout;
+	private String file_folder;
 	private boolean controller_fail = false;
 
 	public Dstore(int port, int cport, int timeout, String file_folder) {
-		Dstore.port = port;
-		Dstore.cport = cport;
-		Dstore.timeout = timeout;
-		Dstore.file_folder = file_folder;
+		System.out.println("*************** Constructor: " + port);
+		this.port = port;
+		this.cport = cport;
+		this.timeout = timeout;
+		this.file_folder = file_folder;
 		try {
 			startDstore();
 		} catch (IOException e) {
@@ -32,16 +33,15 @@ public class Dstore {
 		}
 
 		Socket controller = new Socket(InetAddress.getByName("localhost"), cport);
-
+		System.out.println("DSTORE PORET: " + port);
 		new Thread(() -> { // CONTROLLER
 			try {
 				BufferedReader inController = new BufferedReader(new InputStreamReader(controller.getInputStream()));
-				PrintWriter outController = new PrintWriter(controller.getOutputStream(),true);
+				PrintWriter outController = new PrintWriter(controller.getOutputStream(), true);
 				InputStream in = controller.getInputStream();
 				String dataline = null;
 
 				outController.println(Protocol.JOIN_TOKEN + " " + port);
-				outController.flush();
 				System.out.println("Entering loop of Controller");
 
 				try {
@@ -50,30 +50,30 @@ public class Dstore {
 						if (dataline != null) {
 							String[] data = dataline.split(" ");
 							String command;
-							if (data.length==1) {
+							if (data.length == 1) {
 								command = dataline.trim();
 								data[0] = command;
 								dataline = null;
 							} else {
 								command = data[0];
-								data[data.length-1] = data[data.length-1].trim();
+								data[data.length - 1] = data[data.length - 1].trim();
 								dataline = null;
 							}
 							System.out.println("RECIEVED CONTROLLER COMMAND: " + command);
 
 							if (command.equals(Protocol.REMOVE_TOKEN)) { // Controller LIST -> Controller file_list
-								if(data.length!=2){continue;} // log error and continue
+								if (data.length != 2) {
+									continue;
+								} // log error and continue
 								System.out.println("Entered Remove from CONTROLLER");
 								String filename = data[1];
 								File fileRemove = new File(path + File.separator + filename);
 								if (!fileRemove.exists() || !fileRemove.isFile()) {
 									outController.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
-									//outController.flush();
 									System.out.println("File to delete not existant: " + filename);
 								} else {
 									fileRemove.delete();
 									outController.println(Protocol.REMOVE_ACK_TOKEN + " " + filename);
-									//outController.flush();
 									System.out.println("Send Delete ACK to Controller for: " + filename);
 								}
 							} else
@@ -81,22 +81,64 @@ public class Dstore {
 							if (command.equals(Protocol.REBALANCE_TOKEN)) { // Controller LIST -> Controller file_list
 								//if(data.length!=2){continue;} // log error and continue
 								System.out.println("Entered REBALANCE from CONTROLLER");
-								
+								int filesToSend=Integer.parseInt(data[1]);
+								int index = 2;
+
+								for (int i = 2; i < filesToSend; i++) {
+									String filename = data[index];
+									int portSendCount = Integer.parseInt(data[index + 1]);
+									for (int j = index + 2; j <= index + 1 + portSendCount; j++) {
+										Socket dStoreSocket = new Socket(InetAddress.getByName("localhost"),
+												Integer.parseInt(data[j]));
+										BufferedReader inDstore = new BufferedReader(
+												new InputStreamReader(dStoreSocket.getInputStream()));
+										PrintWriter outDstore = new PrintWriter(dStoreSocket.getOutputStream(), true);
+										File existingFile = new File(path + File.separator + filename);
+										int filesize = (int) existingFile.length(); // casting long to int file size limited to fat32
+										outDstore.println(
+												Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + filesize);
+										if (inDstore.readLine() == Protocol.ACK_TOKEN) {
+											FileInputStream inf = new FileInputStream(existingFile);
+											OutputStream out = dStoreSocket.getOutputStream();
+											out.write(inf.readNBytes(filesize));
+											out.flush();
+											inf.close();
+											out.close();
+											dStoreSocket.close();
+										} else {
+											dStoreSocket.close();
+										}
+									}
+									index = index + portSendCount + 2; // ready index for next file
+								}
+								int fileRemoveCount = Integer.parseInt(data[index]);
+								System.out.println("Remove INDEX -" + index+" removecount -"+ fileRemoveCount);
+								for (int z = index + 1; z < index + 1 + fileRemoveCount; z++) {
+									File existingFile = new File(path + File.separator + data[z]);
+									if (existingFile.exists()) {
+										existingFile.delete();
+									}
+								}
+
+								outController.println(Protocol.REBALANCE_COMPLETE_TOKEN);
+
 							} else
 
 							if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
-								if(data.length!=1){continue;} // log error and continue
+								if (data.length != 1) {
+									continue;
+								} // log error and continue
 								System.out.println("Entered list");
 								String[] fileList = folder.list();
 								String listToSend = String.join(" ", fileList);
 								outController.println(Protocol.LIST_TOKEN + " " + listToSend);
-								//outController.flush();
 								System.out.println("Send list");
 							} else {
 								System.out.println("Unrecognised command"); //log and continue
 							}
 						} else {
-							if (controller.isConnected())controller.close();
+							if (controller.isConnected())
+								controller.close();
 							controller_fail = true;
 							break;
 						}
@@ -113,7 +155,8 @@ public class Dstore {
 			}
 		}).start();
 
-		if (controller_fail)return; //exit if controller connection had failed
+		if (controller_fail)
+			return; //exit if controller connection had failed
 		System.out.println("GOING TO CLIENT PART");
 		/* ---------------------------------CLIENTS PART----------------------------------------------*/
 		try {
@@ -126,9 +169,9 @@ public class Dstore {
 						System.out.println("Client NEW THEREAD");
 						BufferedReader inController = new BufferedReader(
 								new InputStreamReader(controller.getInputStream()));
-						PrintWriter outController = new PrintWriter(controller.getOutputStream(),true);
+						PrintWriter outController = new PrintWriter(controller.getOutputStream(), true);
 						BufferedReader inClient = new BufferedReader(new InputStreamReader(client.getInputStream()));
-						PrintWriter outClient = new PrintWriter(client.getOutputStream(),true);
+						PrintWriter outClient = new PrintWriter(client.getOutputStream(), true);
 
 						String dataline = null;
 						InputStream in = client.getInputStream();
@@ -140,7 +183,7 @@ public class Dstore {
 								if (dataline != null) {
 									String[] data = dataline.split(" ");
 									String command;
-									if (data.length==1) {
+									if (data.length == 1) {
 										command = dataline.trim();
 										data[0] = command;
 										dataline = null;
@@ -167,7 +210,9 @@ public class Dstore {
 									} else
 
 									if (command.equals(Protocol.LOAD_DATA_TOKEN)) { // Client LOAD_DATA filename -> file_content
-										if(data.length!=2){continue;} // log error and continue
+										if (data.length != 2) {
+											continue;
+										} // log error and continue
 										System.out.println("ENTERED LOAD FOR FILE: " + data[1]);
 										String filename = data[1];
 										File existingFile = new File(path + File.separator + filename);
@@ -178,14 +223,14 @@ public class Dstore {
 
 										int filesize = (int) existingFile.length(); // casting long to int file size limited to fat32
 										FileInputStream inf = new FileInputStream(existingFile);
-										OutputStream out = client.getOutputStream();								
+										OutputStream out = client.getOutputStream();
 										out.write(inf.readNBytes(filesize));
 										out.flush();
 										inf.close();
 										out.close();
 										client.close();
 										return;
-									} else{
+									} else {
 										System.out.println("Unrecognised Command!");
 										continue; // log error
 									}
@@ -212,10 +257,10 @@ public class Dstore {
 	}
 
 	public static void main(String[] args) throws IOException {
-		port = Integer.parseInt(args[0]);
-		cport = Integer.parseInt(args[1]);
-		timeout = Integer.parseInt(args[2]);
-		file_folder = args[3];
+		int port = Integer.parseInt(args[0]);
+		int cport = Integer.parseInt(args[1]);
+		int timeout = Integer.parseInt(args[2]);
+		String file_folder = args[3];
 		Dstore dstore = new Dstore(port, cport, timeout, file_folder);
 	}
 }
