@@ -81,12 +81,14 @@ public class Dstore {
 							if (command.equals(Protocol.REBALANCE_TOKEN)) { // Controller LIST -> Controller file_list
 								//if(data.length!=2){continue;} // log error and continue
 								System.out.println("Entered REBALANCE from CONTROLLER");
-								int filesToSend=Integer.parseInt(data[1]);
-								int index = 2;
-
-								for (int i = 2; i < filesToSend; i++) {
+								Integer filesToSend=Integer.parseInt(data[1]);
+								Integer index = 2;
+								for (String string : data) {
+									System.out.println("DATA REBALACE :" + string);
+								}
+								for (int i = 0; i < filesToSend; i++) {
 									String filename = data[index];
-									int portSendCount = Integer.parseInt(data[index + 1]);
+									Integer portSendCount = Integer.parseInt(data[index + 1]);
 									for (int j = index + 2; j <= index + 1 + portSendCount; j++) {
 										Socket dStoreSocket = new Socket(InetAddress.getByName("localhost"),
 												Integer.parseInt(data[j]));
@@ -94,9 +96,8 @@ public class Dstore {
 												new InputStreamReader(dStoreSocket.getInputStream()));
 										PrintWriter outDstore = new PrintWriter(dStoreSocket.getOutputStream(), true);
 										File existingFile = new File(path + File.separator + filename);
-										int filesize = (int) existingFile.length(); // casting long to int file size limited to fat32
-										outDstore.println(
-												Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + filesize);
+										Integer filesize = (int) existingFile.length(); // casting long to int file size limited to fat32
+										outDstore.println(Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + filesize);
 										if (inDstore.readLine() == Protocol.ACK_TOKEN) {
 											FileInputStream inf = new FileInputStream(existingFile);
 											OutputStream out = dStoreSocket.getOutputStream();
@@ -111,7 +112,7 @@ public class Dstore {
 									}
 									index = index + portSendCount + 2; // ready index for next file
 								}
-								int fileRemoveCount = Integer.parseInt(data[index]);
+								Integer fileRemoveCount = Integer.parseInt(data[index]);
 								System.out.println("Remove INDEX -" + index+" removecount -"+ fileRemoveCount);
 								for (int z = index + 1; z < index + 1 + fileRemoveCount; z++) {
 									File existingFile = new File(path + File.separator + data[z]);
@@ -145,13 +146,14 @@ public class Dstore {
 					}
 				} catch (Exception e) {
 					System.out.println("Controller Disconnected Error: " + e);
-					if (controller.isConnected())
-						controller.close();
+					if (controller.isConnected())controller.close();
 					controller_fail = true;
+					e.printStackTrace();
 				}
 			} catch (Exception e) {
 				System.out.println("Initial Controller connection error: " + e);
 				controller_fail = true;
+				e.printStackTrace();
 			}
 		}).start();
 
@@ -198,8 +200,24 @@ public class Dstore {
 										FileOutputStream out = new FileOutputStream(outputFile);
 										out.write(in.readNBytes(filesize)); // possible threadlock?? maybe
 										outController.println(Protocol.STORE_ACK_TOKEN + " " + data[1]);
+										out.flush();
 										out.close();
 										System.out.println("Acknowleded for Wrote file : " + data[1]);
+										client.close();
+										return;
+									} else
+
+									if (command.equals(Protocol.REBALANCE_STORE_TOKEN)) {
+										//if(data.length!=3){continue;} // log error and continue
+										outClient.println(Protocol.ACK_TOKEN);
+										System.out.println("ENTERED STORE FROM CLIENT");
+										int filesize = Integer.parseInt(data[2]);
+										File outputFile = new File(path + File.separator + data[1]);
+										FileOutputStream out = new FileOutputStream(outputFile);
+										out.write(in.readNBytes(filesize)); // possible threadlock?? maybe
+										out.flush();
+										out.close();
+										System.out.println("WROTE REBALACE for Wrote file : " + data[1]);
 										client.close();
 										return;
 									} else
