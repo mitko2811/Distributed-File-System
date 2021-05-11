@@ -166,14 +166,12 @@ public class Dstore {
 				Socket client = ss.accept();
 				new Thread(() -> { // CLIENTS
 					try {
-						System.out.println("Client NEW THEREAD");
-						BufferedReader inController = new BufferedReader(
-								new InputStreamReader(controller.getInputStream()));
+						// BufferedReader inController = new BufferedReader(
+						// 		new InputStreamReader(controller.getInputStream()));
 						PrintWriter outController = new PrintWriter(controller.getOutputStream(), true);
 						BufferedReader inClient = new BufferedReader(new InputStreamReader(client.getInputStream()));
 						PrintWriter outClient = new PrintWriter(client.getOutputStream(), true);
-
-						String dataline = null;
+						String dataline;
 						InputStream in = client.getInputStream();
 						System.out.println("Client Connected");
 
@@ -186,10 +184,8 @@ public class Dstore {
 									if (data.length == 1) {
 										command = dataline.trim();
 										data[0] = command;
-										dataline = null;
 									} else {
 										command = data[0];
-										//dataline = null;
 									}
 									System.out.println("RECIEVED CLIENT COMMAND: " + command);
 
@@ -197,7 +193,6 @@ public class Dstore {
 										//if(data.length!=3){continue;} // log error and continue
 										outClient.println(Protocol.ACK_TOKEN);
 										System.out.println("ENTERED STORE FROM CLIENT");
-										//String filename = data[1];
 										int filesize = Integer.parseInt(data[2]);
 										File outputFile = new File(path + File.separator + data[1]);
 										FileOutputStream out = new FileOutputStream(outputFile);
@@ -210,9 +205,7 @@ public class Dstore {
 									} else
 
 									if (command.equals(Protocol.LOAD_DATA_TOKEN)) { // Client LOAD_DATA filename -> file_content
-										if (data.length != 2) {
-											continue;
-										} // log error and continue
+										//if (data.length != 2) {continue;} // log error and continue
 										System.out.println("ENTERED LOAD FOR FILE: " + data[1]);
 										String filename = data[1];
 										File existingFile = new File(path + File.separator + filename);

@@ -125,7 +125,6 @@ public class Controller {
 											String portsToStoreString = String.join(" ", portsToStore);
 											fileToStore_ACKPorts.put(filename, new ArrayList<Integer>());// initialize store file acks
 											outClient.println(Protocol.STORE_TO_TOKEN + " " + portsToStoreString);
-											//outClient.flush();
 
 											boolean success_Store = false;
 											long timeout_time = System.currentTimeMillis() + timeout;
@@ -146,7 +145,7 @@ public class Controller {
 											}
 
 											synchronized(storeLock){
-											fileToStore_ACKPorts.remove(filename); // remove stored file from fileToStore_ACKPorts queue
+												fileToStore_ACKPorts.remove(filename); // remove stored file from fileToStore_ACKPorts queue
 											}
 											files_activeStore.remove(filename);// FILE STORED REMOVE INDEX
 											System.out.println("EXITED STORE FOR: " + filename);
@@ -284,7 +283,7 @@ public class Controller {
 											}
 
 											if (!success_Remove) {
-												System.out.println("FAILED STORE: " + filename);
+												System.out.println("FAILED REMOVE: " + filename);
 											}
 
 											fileToRemove_ACKPorts.remove(filename);
@@ -428,7 +427,7 @@ public class Controller {
 	}
 
 	public synchronized void rebalanceOperation() {
-		System.out.println("*********************Rebalance started waiting************************");
+		System.out.println("*********************Rebalance waiting store/remove************************");
 		while (files_activeRemove.size() != 0 && files_activeStore.size() != 0) {
 			continue;
 		}
@@ -516,7 +515,6 @@ public class Controller {
 				outDSREBALANCE.println(Protocol.REBALANCE_TOKEN + message);
 				System.out.println("@@@@@@@@@@@@@@@@@@@@"+Protocol.REBALANCE_TOKEN + message+"@@@@@@@@@@@@@@@@@@@@");
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
