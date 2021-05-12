@@ -9,7 +9,6 @@ public class Dstore {
 	private boolean controller_fail = false;
 
 	public Dstore(int port, int cport, int timeout, String file_folder) {
-		System.out.println("*************** Constructor: " + port);
 		this.port = port;
 		this.cport = cport;
 		this.timeout = timeout;
@@ -43,7 +42,6 @@ public class Dstore {
 			try {
 				BufferedReader inController = new BufferedReader(new InputStreamReader(controller.getInputStream()));
 				PrintWriter outController = new PrintWriter(controller.getOutputStream(), true);
-				InputStream in = controller.getInputStream();
 				String dataline = null;
 
 				outController.println(Protocol.JOIN_TOKEN + " " + port);
@@ -66,35 +64,30 @@ public class Dstore {
 								data[data.length - 1] = data[data.length - 1].trim();
 								dataline = null;
 							}
-							System.out.println("RECIEVED CONTROLLER COMMAND: " + command);
+							System.out.println("Revieved Controller Command: " + command);
 
 							if (command.equals(Protocol.REMOVE_TOKEN)) { // Controller LIST -> Controller file_list
 								if (data.length != 2) {
 									System.err.println("Malformed message received for Remove");
 									continue;
 								} // log error and continue
-								System.out.println("Entered Remove from CONTROLLER");
 								String filename = data[1];
 								File fileRemove = new File(path + File.separator + filename);
 								if (!fileRemove.exists() || !fileRemove.isFile()) {
 									outController.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
-									DstoreLogger.getInstance().messageSent(controller, Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
-									System.out.println("File to delete not existant: " + filename);
+									DstoreLogger.getInstance().messageSent(controller,
+											Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
 								} else {
 									fileRemove.delete();
 									outController.println(Protocol.REMOVE_ACK_TOKEN + " " + filename);
-									DstoreLogger.getInstance().messageSent(controller, Protocol.REMOVE_ACK_TOKEN + " " + filename);
-									System.out.println("Send Delete ACK to Controller for: " + filename);
+									DstoreLogger.getInstance().messageSent(controller,
+											Protocol.REMOVE_ACK_TOKEN + " " + filename);
 								}
 							} else
 
 							if (command.equals(Protocol.REBALANCE_TOKEN)) { // Controller LIST -> Controller file_list
-								System.out.println("Entered REBALANCE from CONTROLLER");
-								Integer filesToSend=Integer.parseInt(data[1]);
+								Integer filesToSend = Integer.parseInt(data[1]);
 								Integer index = 2;
-								for (String string : data) {
-									System.out.println("DATA REBALACE :" + string);
-								}
 								for (int i = 0; i < filesToSend; i++) {
 									String filename = data[index];
 									Integer portSendCount = Integer.parseInt(data[index + 1]);
@@ -106,10 +99,13 @@ public class Dstore {
 										PrintWriter outDstore = new PrintWriter(dStoreSocket.getOutputStream(), true);
 										File existingFile = new File(path + File.separator + filename);
 										Integer filesize = (int) existingFile.length(); // casting long to int file size limited to fat32
-										outDstore.println(Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + filesize);
-										DstoreLogger.getInstance().messageSent(dStoreSocket, Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + filesize);
+										outDstore.println(
+												Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + filesize);
+										DstoreLogger.getInstance().messageSent(dStoreSocket,
+												Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + filesize);
 										if (inDstore.readLine() == Protocol.ACK_TOKEN) {
-											DstoreLogger.getInstance().messageReceived(dStoreSocket, Protocol.ACK_TOKEN);
+											DstoreLogger.getInstance().messageReceived(dStoreSocket,
+													Protocol.ACK_TOKEN);
 											FileInputStream inf = new FileInputStream(existingFile);
 											OutputStream out = dStoreSocket.getOutputStream();
 											out.write(inf.readNBytes(filesize));
@@ -124,7 +120,6 @@ public class Dstore {
 									index = index + portSendCount + 2; // ready index for next file
 								}
 								Integer fileRemoveCount = Integer.parseInt(data[index]);
-								System.out.println("Remove INDEX -" + index+" removecount -"+ fileRemoveCount);
 								for (int z = index + 1; z < index + 1 + fileRemoveCount; z++) {
 									File existingFile = new File(path + File.separator + data[z]);
 									if (existingFile.exists()) {
@@ -142,14 +137,13 @@ public class Dstore {
 									System.err.println("Malformed message received for LIST");
 									continue;
 								} // log error and continue
-								System.out.println("Entered list");
 								String[] fileList = folder.list();
 								String listToSend = String.join(" ", fileList);
 								outController.println(Protocol.LIST_TOKEN + " " + listToSend);
-								DstoreLogger.getInstance().messageSent(controller, Protocol.LIST_TOKEN + " " + listToSend);
-								System.out.println("Send list");
+								DstoreLogger.getInstance().messageSent(controller,
+										Protocol.LIST_TOKEN + " " + listToSend);
 							} else {
-								System.out.println("Unrecognised command"); //log and continue
+								System.err.println("Unrecognised command! - " + dataline); //log and continue
 							}
 						} else {
 							if (controller.isConnected())
@@ -160,14 +154,13 @@ public class Dstore {
 					}
 				} catch (Exception e) {
 					System.err.println("Controller Disconnected Error: " + e);
-					if (controller.isConnected())controller.close();
+					if (controller.isConnected())
+						controller.close();
 					controller_fail = true;
-					e.printStackTrace();
 				}
 			} catch (Exception e) {
 				System.err.println("Initial Controller Connection Error: " + e);
 				controller_fail = true;
-				e.printStackTrace();
 			}
 		}).start();
 
@@ -182,8 +175,6 @@ public class Dstore {
 				Socket client = ss.accept();
 				new Thread(() -> { // CLIENTS
 					try {
-						// BufferedReader inController = new BufferedReader(
-						// 		new InputStreamReader(controller.getInputStream()));
 						PrintWriter outController = new PrintWriter(controller.getOutputStream(), true);
 						BufferedReader inClient = new BufferedReader(new InputStreamReader(client.getInputStream()));
 						PrintWriter outClient = new PrintWriter(client.getOutputStream(), true);
@@ -204,16 +195,15 @@ public class Dstore {
 									} else {
 										command = data[0];
 									}
-									System.out.println("RECIEVED CLIENT COMMAND: " + command);
+									System.out.println("Recieved Client Command: " + command);
 
 									if (command.equals(Protocol.STORE_TOKEN)) {
-										if(data.length!=3){
+										if (data.length != 3) {
 											System.err.println("Malformed message received for STORE");
 											continue;
 										} // log error and continue
 										outClient.println(Protocol.ACK_TOKEN);
 										DstoreLogger.getInstance().messageSent(client, Protocol.ACK_TOKEN);
-										System.out.println("ENTERED STORE FROM CLIENT");
 										int filesize = Integer.parseInt(data[2]);
 										File outputFile = new File(path + File.separator + data[1]);
 										FileOutputStream out = new FileOutputStream(outputFile);
@@ -221,28 +211,29 @@ public class Dstore {
 										while (System.currentTimeMillis() <= timeout_time) {
 											out.write(in.readNBytes(filesize)); // possible threadlock?? maybe
 											outController.println(Protocol.STORE_ACK_TOKEN + " " + data[1]);
-											DstoreLogger.getInstance().messageSent(controller, Protocol.STORE_ACK_TOKEN + " " + data[1]);
+											DstoreLogger.getInstance().messageSent(controller,
+													Protocol.STORE_ACK_TOKEN + " " + data[1]);
 											break;
 										}
 										out.flush();
 										out.close();
-										System.out.println("Acknowleded for Wrote file : " + data[1]);
 										client.close();
 										return;
 									} else
 
 									if (command.equals(Protocol.REBALANCE_STORE_TOKEN)) {
-										//if(data.length!=3){continue;} // log error and continue
+										if (data.length != 3) {
+											System.err.println("Malformed message received for REBALANCE_STORE");
+											continue;
+										} // log error and continue
 										outClient.println(Protocol.ACK_TOKEN);
 										DstoreLogger.getInstance().messageSent(client, Protocol.ACK_TOKEN);
-										System.out.println("ENTERED STORE FROM CLIENT");
 										int filesize = Integer.parseInt(data[2]);
 										File outputFile = new File(path + File.separator + data[1]);
 										FileOutputStream out = new FileOutputStream(outputFile);
 										out.write(in.readNBytes(filesize)); // possible threadlock?? maybe
 										out.flush();
 										out.close();
-										System.out.println("WROTE REBALACE for Wrote file : " + data[1]);
 										client.close();
 										return;
 									} else
@@ -252,7 +243,6 @@ public class Dstore {
 											System.err.println("Malformed message received for LOAD");
 											continue;
 										} // log error and continue
-										System.out.println("ENTERED LOAD FOR FILE: " + data[1]);
 										String filename = data[1];
 										File existingFile = new File(path + File.separator + filename);
 										if (!existingFile.exists() || !existingFile.isFile()) {
@@ -270,7 +260,7 @@ public class Dstore {
 										client.close();
 										return;
 									} else {
-										System.err.println("Unrecognised Command! - "+dataline);
+										System.err.println("Unrecognised Command! - " + dataline);
 										continue; // log error
 									}
 								} else {
