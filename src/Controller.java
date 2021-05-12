@@ -7,7 +7,8 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class Controller {
+public class Controller{
+	//private Logger;
 	private Integer cport;
 	private Integer R; // Replication factor - number of Dstores
 	private Integer timeout;
@@ -40,8 +41,12 @@ public class Controller {
 		this.R = R;
 		this.timeout = timeout;
 		this.rebalance_period = rebalance_period;
+		try {
+			ControllerLogger.init(Logger.LoggingType.ON_FILE_AND_TERMINAL);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 		this.startController();
-
 	}
 
 	public void startController() {
@@ -53,7 +58,6 @@ public class Controller {
 					while (System.currentTimeMillis() <= this.rebalance_time) {
 						continue;
 					}
-					//activeRebalance = true;
 					rebalanceOperation();
 					activeRebalance = false;
 				}
@@ -62,7 +66,7 @@ public class Controller {
 			for (;;) {
 				try {
 					System.out.println("Waiting for connection");
-					final Socket client = ss.accept();
+					Socket client = ss.accept();
 
 					new Thread(() -> {
 						boolean isDstore = false;
@@ -77,6 +81,7 @@ public class Controller {
 							for (;;) {
 
 								dataline = inClient.readLine();
+								ControllerLogger.getInstance().messageReceived(client, dataline); // log recieved messages
 								if (dataline != null) {
 									String[] data = dataline.split(" ");
 									String command;
@@ -91,6 +96,7 @@ public class Controller {
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.STORE_TOKEN)) { // CLIENT STORE
 										if (data.length != 3) {
+											System.err.println("Malformed message received for STORE");
 											continue;
 										} // log error and continue
 										System.out.println("ENTERED STORE FROM CLIENT for : " + data[1]);
@@ -99,15 +105,18 @@ public class Controller {
 
 										if (Dstore_count.get() < R) {
 											outClient.println(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+											ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
 											System.out.println("SEND NOT ENOUGH DSTORES FOR STORE ERROR");
 										} else if (file_filesize.get(filename) != null
 												|| files_activeRemove.contains(filename)) { // checks if file exists or in Remove INDEX
 											outClient.println(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
+											ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
 											System.out.println("SEND FILE ALREADY EXISTS ERROR");
 										} else {
 											synchronized (lock) {
 												if (files_activeStore.contains(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
 													outClient.println(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
+													ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
 													continue;
 												} else {
 													while (activeRebalance) { // waiting for rebalance to end
@@ -126,6 +135,7 @@ public class Controller {
 											String portsToStoreString = String.join(" ", portsToStore);
 											fileToStore_ACKPorts.put(filename, new ArrayList<Integer>());// initialize store file acks
 											outClient.println(Protocol.STORE_TO_TOKEN + " " + portsToStoreString);
+											ControllerLogger.getInstance().messageSent(client, Protocol.STORE_TO_TOKEN + " " + portsToStoreString);
 											timedoutStore.add(filename);
 
 											boolean success_Store = false;
@@ -133,6 +143,7 @@ public class Controller {
 											while (System.currentTimeMillis() <= timeout_time) {
 												if (fileToStore_ACKPorts.get(filename).size() >= R) { // checks if file to store has completed acknowledgements
 													outClient.println(Protocol.STORE_COMPLETE_TOKEN);
+													ControllerLogger.getInstance().messageSent(client, Protocol.STORE_COMPLETE_TOKEN);
 													synchronized (storeLock) {
 														timedoutStore.remove(filename);
 													}
@@ -147,15 +158,12 @@ public class Controller {
 											}
 
 											if (!success_Store) {
-												System.out.println("FAILED STORE: " + filename);
+												System.err.println("Store timed out for: "+filename );
 											}
 
 											synchronized (storeLock) {
 												fileToStore_ACKPorts.remove(filename); // remove stored file from fileToStore_ACKPorts queue
 											}
-											// for (String string : file_filesize.keySet()) {
-											// 	System.out.println("FILES AFTER STORE - " + string);
-											// }
 											files_activeStore.remove(filename);// FILE STORED REMOVE INDEX
 											System.out.println("EXITED STORE FOR: " + filename);
 										}
@@ -167,9 +175,8 @@ public class Controller {
 											if (fileToStore_ACKPorts.containsKey(data[1]))fileToStore_ACKPorts.get(data[1]).add(dstoreport);// add ack port inside chmap
 										}
 										dstore_port_files.get(dstoreport).add(data[1]);
-										dstore_port_numbfiles.put(dstoreport, dstore_port_files.get(dstoreport).size());
-										System.out
-												.println("RECIEVED ACK FOR: " + data[1] + " FROM PORT: " + dstoreport);
+										dstore_port_numbfiles.put(dstoreport, dstore_port_numbfiles.get(dstoreport)+1);
+										System.out.println("RECIEVED ACK FOR: " + data[1] + " FROM PORT: " + dstoreport);
 
 									} else
 
@@ -196,16 +203,19 @@ public class Controller {
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.LOAD_TOKEN) || command.equals(Protocol.RELOAD_TOKEN)) { // Client LOAD
 										if (data.length != 2) {
+											System.err.println("Malformed message received for LOAD/RELOAD");
 											continue;
 										} // log error and continue
 										System.out.println("ENTERED LOAD/RELOAD FROM CLIENT for file: " + data[1]);
 										String filename = data[1];
 										if (Dstore_count.get() < R) {
 											outClient.println(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+											ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
 											System.out.println("NOT ENOUGH DSTORES FOR LOAD ERROR for: " + filename);
 										} else {
 											if (!file_filesize.containsKey(filename)) { // CHECKS FILE CONTAINS AND INDEX
 												outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
+												ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 												System.out.println(
 														"SEND ERROR_FILE_DOES_NOT_EXIST_TOKEN for: " + filename);
 											} else {
@@ -213,9 +223,11 @@ public class Controller {
 														|| files_activeRemove.contains(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
 													if (command.equals(Protocol.LOAD_TOKEN)) {
 														outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
+														ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 														continue;
 													} else {
 														outClient.println(Protocol.ERROR_LOAD_TOKEN);
+														ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_LOAD_TOKEN);
 														continue;
 													}
 												}
@@ -228,9 +240,8 @@ public class Controller {
 													System.out.println("IT WAS LOAD FROM CLIENT for file: " + data[1]);
 													dstore_file_portsLeftReload.put(filename,
 															new ArrayList<>(dstore_file_ports.get(filename)));
-													outClient.println(Protocol.LOAD_FROM_TOKEN + " "
-															+ dstore_file_portsLeftReload.get(filename).get(0) + " "
-															+ file_filesize.get(filename));
+													outClient.println(Protocol.LOAD_FROM_TOKEN + " "+ dstore_file_portsLeftReload.get(filename).get(0) + " "+ file_filesize.get(filename));
+													ControllerLogger.getInstance().messageSent(client, Protocol.LOAD_FROM_TOKEN + " "+ dstore_file_portsLeftReload.get(filename).get(0) + " "+ file_filesize.get(filename));
 													dstore_file_portsLeftReload.get(filename).remove(0);
 												} else {
 													System.out
@@ -240,11 +251,15 @@ public class Controller {
 														outClient.println(Protocol.LOAD_FROM_TOKEN + " "
 																+ dstore_file_portsLeftReload.get(filename).get(0) + " "
 																+ file_filesize.get(filename));
+														ControllerLogger.getInstance().messageSent(client, Protocol.LOAD_FROM_TOKEN + " "
+														+ dstore_file_portsLeftReload.get(filename).get(0) + " "
+														+ file_filesize.get(filename));
 														dstore_file_portsLeftReload.get(filename).remove(0);
 														System.out.println("********AFTERRRportsLeftReload******** is "
 																+ filename);
 													} else {
 														outClient.println(Protocol.ERROR_LOAD_TOKEN);
+														ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_LOAD_TOKEN);
 														System.out.println(
 																"SEND ERROR LOAD TO CLIENT FOR FILE: " + filename);
 													}
@@ -258,22 +273,26 @@ public class Controller {
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.REMOVE_TOKEN)) { // CLIENT REMOVE
 										if (data.length != 2) {
+											System.err.println("Malformed message received for REMOVE");
 											continue;
 										} // log error and continue
 										System.out.println("ENTERED REMOVE FOR FILE: " + data[1]);
 										String filename = data[1];
 										if (Dstore_count.get() < R) {
 											outClient.println(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+											ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
 											System.out.println("NOT ENOUGH DSTORES FOR REMOVE ERROR for: " + filename);
 										} else if (!file_filesize.containsKey(filename)
 												|| files_activeStore.contains(filename)) {
 											outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
+											ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 											System.out.println("SEND FILE DOES NOT EXIST FOR: " + filename);
 										} else {
 											synchronized (lock) {
 												if (files_activeRemove.contains(filename)
 														|| !file_filesize.containsKey(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
 													outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
+													ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 													continue;
 												} else {
 													while (activeRebalance) { // waiting for rebalance to end
@@ -293,6 +312,7 @@ public class Controller {
 													PrintWriter outDstore = new PrintWriter(
 															dstoreSocket.getOutputStream(), true);
 													outDstore.println(Protocol.REMOVE_TOKEN + " " + filename);
+													ControllerLogger.getInstance().messageSent(dstoreSocket, Protocol.REMOVE_TOKEN + " " + filename);
 													System.out.println("************ASKED FOR REMOVE OF FILE: "
 															+ filename + " on port " + port);
 												}
@@ -304,6 +324,7 @@ public class Controller {
 												if (fileToRemove_ACKPorts.get(filename).size() == 0) { // checks if file to store has completed acknowledgements
 													System.out.println("ENTERED LOOP TIMES");
 													outClient.println(Protocol.REMOVE_COMPLETE_TOKEN);
+													ControllerLogger.getInstance().messageSent(client, Protocol.REMOVE_COMPLETE_TOKEN);
 													System.out.println("SEND STORE COMPLETE ACK FOR: " + filename);
 													dstore_file_ports.remove(filename);
 													success_Remove = true;
@@ -312,7 +333,7 @@ public class Controller {
 											}
 
 											if (!success_Remove) {
-												System.out.println("FAILED REMOVE: " + filename);
+												System.err.println("REMOVE timed out for: "+filename );
 											}
 
 											for (String string : file_filesize.keySet()) {
@@ -328,17 +349,21 @@ public class Controller {
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.LIST_TOKEN) && !isDstore) { // Client LIST -> Client LIST file_list
 										if (data.length != 1) {
+											System.err.println("Malformed message received for LIST by Client");
 											continue;
 										} // log error and continue
 										if (Dstore_count.get() < R) {
 											outClient.println(Protocol.ERROR_LOAD_TOKEN);
+											ControllerLogger.getInstance().messageSent(client, Protocol.ERROR_LOAD_TOKEN);
 											System.out.println("SEND NOT ENOUGH DSTORES FOR REMOVE ERROR");
 										} else if (file_filesize.size() != 0) {
 											String filesList = String.join(" ", file_filesize.keySet());
 											outClient.println(Protocol.LIST_TOKEN + " " + filesList);
+											ControllerLogger.getInstance().messageSent(client, Protocol.LIST_TOKEN + " " + filesList);
 											System.out.println("asked list from client");
 										} else {
 											outClient.println(Protocol.LIST_TOKEN);
+											ControllerLogger.getInstance().messageSent(client, Protocol.LIST_TOKEN);
 										}
 									} else
 
@@ -363,6 +388,7 @@ public class Controller {
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.JOIN_TOKEN)) { // Dstore JOIN port
 										if (data.length != 2) {
+											System.err.println("Malformed message for Dstore Joining");
 											continue;
 										} // log error and continue
 										System.out.println("Entered Join from Dstore port is " + data[1]);
@@ -377,6 +403,7 @@ public class Controller {
 											while (activeRebalance) {
 												continue;
 											}
+											ControllerLogger.getInstance().dstoreJoined(client, dstoreport);
 											dstore_port_files.put(dstoreport, new ArrayList<String>()); // initialize port number of dstore
 											dstore_port_numbfiles.put(dstoreport, 0); // initialize port/numbfiles hashmap
 											dstore_port_Socket.put(dstoreport, client);
@@ -386,12 +413,12 @@ public class Controller {
 											this.rebalance_time = System.currentTimeMillis(); // turn on rebalance if not running
 										}
 									} else {
-										System.out.println("Unrecognised or Timed Out Command! - " + command);
+										System.err.println("Unrecognised or Timed Out Command! - " + dataline);
 										continue; // log error
 									}
 								} else {
 									if (isDstore) {
-										System.out.println("DSTORE FAIL!!!!!!!!!!!!!!!");
+										System.err.println("DSTORE Disconnected!");
 										Dstore_count.decrementAndGet(); //decrease count if dstore disconnected
 										while (activeRebalance) {
 											continue;
@@ -406,7 +433,7 @@ public class Controller {
 							}
 						} catch (Exception e) {
 							if (isDstore) {
-								System.out.println("DSTORE FAIL!!!!!!!!!!!!!!!");
+								System.err.println("DSTORE CRASHED!");
 								Dstore_count.decrementAndGet(); //decrease count if dstore disconnected
 								while (activeRebalance) {
 									continue;
@@ -415,17 +442,17 @@ public class Controller {
 									clearPort(dstoreport); // clear port data if dstore disonnected
 								}
 							}
-							System.out.println("error1 " + e);
+							System.err.println("Fatal error in client: " + e);
 							e.printStackTrace();
 						}
 					}).start();
 				} catch (Exception e) {
-					System.out.println("error2 " + e);
+					System.err.println("Could not create Socket: " + e);
 					e.printStackTrace();
 				}
 			}
 		} catch (Exception e) {
-			System.out.println("error3 " + e);
+			System.err.println("Could not create server socket: " + e);
 			e.printStackTrace();
 		}
 	}
@@ -481,15 +508,6 @@ public class Controller {
 				}
 			}
 			files_RemoveCount.clear();
-
-			//System.out.println("*********************Rebalance waiting store/remove************************");
-			// while (files_activeRemove.size() != 0 && files_activeStore.size() != 0) {
-			// 	continue;
-			// }
-
-			// for (String string : file_filesize.keySet()) {
-			// 	System.out.println("FILES BEFORE REBALANCE - " + string);
-			// }
 			System.out.println("*********************Rebalance started************************");
 			Integer newDSCount = dstore_port_Socket.size(); // before rebalance count
 			ArrayList<Integer> failedPorts = new ArrayList<>();
@@ -500,6 +518,7 @@ public class Controller {
 				try {
 					PrintWriter outDSP = new PrintWriter(dstore_port_Socket.get(port).getOutputStream(), true);
 					outDSP.println(Protocol.LIST_TOKEN);
+					ControllerLogger.getInstance().messageSent(dstore_port_Socket.get(port), Protocol.LIST_TOKEN);
 					for (String file : dstore_port_files.get(port)) {
 						System.out.println("FILES IN PORT: " + port + " FILE: " + file);
 					}
@@ -527,6 +546,10 @@ public class Controller {
 			for (Integer port : failedPorts) { // cleanup broken disconnected DStores
 				//dstore_port_Socket.get(port).close();
 				clearPort(port);
+			}
+
+			for (Integer prt : dstore_port_numbfiles.keySet()) {
+				System.out.println("===================port: "+ prt+"=========numbfiles: " + dstore_port_numbfiles.get(prt)+"===============================================================");
 			}
 
 			for (String file : dstore_file_ports.keySet()) {
@@ -558,8 +581,8 @@ public class Controller {
 			rebalanceCompleteACK.set(0);
 			activeRebalance = false;
 		} catch (Exception e) {
-			//TODO: handle exception
 			activeRebalance = false;
+			System.err.println("Rebalance Fatal Error: " + e);
 			e.printStackTrace();
 		}
 	}
@@ -615,7 +638,8 @@ public class Controller {
 					}
 					if(files_RemoveCount.containsKey(file)){files_RemoveCount.remove(file);}
 					if(dstore_file_ports.containsKey(file)){dstore_file_ports.remove(file);}
-				} else if (files_RemoveCount.containsKey(file) && files_RemoveCount.get(file)>0){
+				} else {
+					if (files_RemoveCount.containsKey(file) && files_RemoveCount.get(file)>0){
 					files_to_remove = files_to_remove + " " + file;
 					files_to_remove_count++;
 					files_RemoveCount.put(file,files_RemoveCount.get(file)-1);
@@ -629,6 +653,7 @@ public class Controller {
 					}
 				}
 			}
+			}
 
 			if (!dstore_port_filesTMP.containsKey(port)) {
 				dstore_port_filesTMP.put(port, new ArrayList<>());
@@ -639,8 +664,10 @@ public class Controller {
 			String message = "";
 			message = " " + files_to_send_count + files_to_send + " " + files_to_remove_count + files_to_remove;
 			try {
-				PrintWriter outDSREBALANCE = new PrintWriter(dstore_port_Socket.get(port).getOutputStream(), true);
+				Socket dsRebalance = dstore_port_Socket.get(port);
+				PrintWriter outDSREBALANCE = new PrintWriter(dsRebalance.getOutputStream(), true);
 				outDSREBALANCE.println(Protocol.REBALANCE_TOKEN + message);
+				ControllerLogger.getInstance().messageSent(dsRebalance, Protocol.REBALANCE_TOKEN + message);
 				System.out.println("@@@@@@@@@@@@@@@@@@@@" + Protocol.REBALANCE_TOKEN + message
 						+ "@@@@@@@@@@@@@@@@@@@@ for port: " + port);
 			} catch (IOException e) {
