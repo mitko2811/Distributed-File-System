@@ -14,13 +14,14 @@ public class Controller {
 	private Integer rebalance_period;
 	private AtomicInteger Dstore_count = new AtomicInteger(0);
 	private AtomicInteger rebalanceCompleteACK = new AtomicInteger(0);
-	private Boolean activeRebalance = false;
-	private Boolean activeList = false;
+	private volatile Boolean activeRebalance = false;
+	private volatile Boolean activeList = false;
 	private volatile Long rebalance_time;
 	private Object lock = new Object();
 	private Object removeLock = new Object();
 	private Object storeLock = new Object();
 	private Object DstoreJoinLock = new Object();
+	private List<String> timedoutStore = Collections.synchronizedList(new ArrayList<String>());
 	private ConcurrentHashMap<Integer, ArrayList<String>> dstore_port_files = new ConcurrentHashMap<Integer, ArrayList<String>>();
 	private ConcurrentHashMap<Integer, Integer> dstore_port_numbfiles = new ConcurrentHashMap<Integer, Integer>();
 	private ConcurrentHashMap<String, ArrayList<Integer>> dstore_file_ports = new ConcurrentHashMap<String, ArrayList<Integer>>();
@@ -32,6 +33,7 @@ public class Controller {
 	private List<String> files_activeStore = Collections.synchronizedList(new ArrayList<String>()); // index of active file stores
 	private List<String> files_activeRemove = Collections.synchronizedList(new ArrayList<String>()); // index of active file removes
 	private ConcurrentHashMap<String, Integer> files_addCount = new ConcurrentHashMap<String, Integer>();
+	private ConcurrentHashMap<String, Integer> files_RemoveCount = new ConcurrentHashMap<String, Integer>();
 
 	public Controller(int cport, int R, int timeout, int rebalance_period) {
 		this.cport = cport;
@@ -124,12 +126,16 @@ public class Controller {
 											String portsToStoreString = String.join(" ", portsToStore);
 											fileToStore_ACKPorts.put(filename, new ArrayList<Integer>());// initialize store file acks
 											outClient.println(Protocol.STORE_TO_TOKEN + " " + portsToStoreString);
+											timedoutStore.add(filename);
 
 											boolean success_Store = false;
 											long timeout_time = System.currentTimeMillis() + timeout;
 											while (System.currentTimeMillis() <= timeout_time) {
 												if (fileToStore_ACKPorts.get(filename).size() >= R) { // checks if file to store has completed acknowledgements
 													outClient.println(Protocol.STORE_COMPLETE_TOKEN);
+													synchronized (storeLock) {
+														timedoutStore.remove(filename);
+													}
 													System.out.println("SEND STORE COMPLETE ACK FOR: " + filename);
 													System.out.println("ACK PORTS NOW FOR FILE: (" + filename + ") ("
 															+ fileToStore_ACKPorts.get(filename) + ")");
@@ -147,9 +153,9 @@ public class Controller {
 											synchronized (storeLock) {
 												fileToStore_ACKPorts.remove(filename); // remove stored file from fileToStore_ACKPorts queue
 											}
-											for (String string : file_filesize.keySet()) {
-												System.out.println("FILES AFTER STORE - " + string);
-											}
+											// for (String string : file_filesize.keySet()) {
+											// 	System.out.println("FILES AFTER STORE - " + string);
+											// }
 											files_activeStore.remove(filename);// FILE STORED REMOVE INDEX
 											System.out.println("EXITED STORE FOR: " + filename);
 										}
@@ -158,8 +164,7 @@ public class Controller {
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.STORE_ACK_TOKEN)) { // Dstore Store_ACK filename
 										synchronized (storeLock) {
-											if (fileToStore_ACKPorts.containsKey(data[1]))
-												fileToStore_ACKPorts.get(data[1]).add(dstoreport);// add ack port inside chmap
+											if (fileToStore_ACKPorts.containsKey(data[1]))fileToStore_ACKPorts.get(data[1]).add(dstoreport);// add ack port inside chmap
 										}
 										dstore_port_files.get(dstoreport).add(data[1]);
 										dstore_port_numbfiles.put(dstoreport, dstore_port_files.get(dstoreport).size());
@@ -348,7 +353,7 @@ public class Controller {
 											if (dstore_file_ports.get(string) == null) {
 												dstore_file_ports.put(string, new ArrayList<Integer>());
 											}
-											dstore_file_ports.get(string).add(dstoreport); // puts the given file the port that its in
+											if(!dstore_file_ports.get(string).contains(dstoreport)) dstore_file_ports.get(string).add(dstoreport); // puts the given file the port that its in
 											System.out.println("Dstore port: " + dstoreport + " File: " + string);
 										}
 										listACKPorts.add(dstoreport);
@@ -377,6 +382,7 @@ public class Controller {
 											dstore_port_Socket.put(dstoreport, client);
 											isDstore = true;
 											Dstore_count.incrementAndGet();
+											activeRebalance = true;
 											this.rebalance_time = System.currentTimeMillis(); // turn on rebalance if not running
 										}
 									} else {
@@ -469,16 +475,21 @@ public class Controller {
 
 			synchronized (lock) {
 				activeRebalance = true;
+				System.out.println("*********************Rebalance waiting store/remove************************");
+				while (files_activeRemove.size() != 0 && files_activeStore.size() != 0) {
+					continue;
+				}
 			}
+			files_RemoveCount.clear();
 
-			System.out.println("*********************Rebalance waiting store/remove************************");
-			while (files_activeRemove.size() != 0 && files_activeStore.size() != 0) {
-				continue;
-			}
+			//System.out.println("*********************Rebalance waiting store/remove************************");
+			// while (files_activeRemove.size() != 0 && files_activeStore.size() != 0) {
+			// 	continue;
+			// }
 
-			for (String string : file_filesize.keySet()) {
-				System.out.println("FILES BEFORE REBALANCE - " + string);
-			}
+			// for (String string : file_filesize.keySet()) {
+			// 	System.out.println("FILES BEFORE REBALANCE - " + string);
+			// }
 			System.out.println("*********************Rebalance started************************");
 			Integer newDSCount = dstore_port_Socket.size(); // before rebalance count
 			ArrayList<Integer> failedPorts = new ArrayList<>();
@@ -518,6 +529,14 @@ public class Controller {
 				clearPort(port);
 			}
 
+			for (String file : dstore_file_ports.keySet()) {
+				if(dstore_file_ports.get(file).size()>R){
+					int remove = dstore_file_ports.get(file).size() - R;
+					files_RemoveCount.put(file,remove);
+					System.out.println("=============================file: "+file+"====================times remove: "+remove+"===========================================================");
+				}
+			}
+
 			System.out.println("*********************REVIEVED/TIMEDOUT LIST************************");
 			// SECTION FOR SENDING REBALANCE OPERATION TO DSTORES WITH FILES TO SPREAD AND REMOVE
 			sendRebalance();
@@ -541,6 +560,7 @@ public class Controller {
 		} catch (Exception e) {
 			//TODO: handle exception
 			activeRebalance = false;
+			e.printStackTrace();
 		}
 	}
 
@@ -585,10 +605,28 @@ public class Controller {
 					files_to_send = files_to_send + " " + file + " " + portcount + " " + portsToSendStr;
 				}
 				System.out.println("*********************SEND8***********************");
+
 				if (!file_filesize.containsKey(file)) {
 					System.out.println("LLALALALLALALALALLAAALALLALALAL : " + file);
 					files_to_remove = files_to_remove + " " + file;
 					files_to_remove_count++;
+					if(dstore_port_numbfiles.containsKey(port)){
+						dstore_port_numbfiles.put(port,dstore_port_numbfiles.get(port)-1);
+					}
+					if(files_RemoveCount.containsKey(file)){files_RemoveCount.remove(file);}
+					if(dstore_file_ports.containsKey(file)){dstore_file_ports.remove(file);}
+				} else if (files_RemoveCount.containsKey(file) && files_RemoveCount.get(file)>0){
+					files_to_remove = files_to_remove + " " + file;
+					files_to_remove_count++;
+					files_RemoveCount.put(file,files_RemoveCount.get(file)-1);
+					if(dstore_port_numbfiles.containsKey(port)){
+						dstore_port_numbfiles.put(port,dstore_port_numbfiles.get(port)-1);
+					}
+					if(dstore_file_ports.containsKey(file)){
+						if(dstore_file_ports.get(file).contains(port)){
+							dstore_file_ports.get(file).remove(port);
+						}
+					}
 				}
 			}
 
