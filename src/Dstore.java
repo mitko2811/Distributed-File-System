@@ -198,8 +198,12 @@ public class Dstore {
 										int filesize = Integer.parseInt(data[2]);
 										File outputFile = new File(path + File.separator + data[1]);
 										FileOutputStream out = new FileOutputStream(outputFile);
-										out.write(in.readNBytes(filesize)); // possible threadlock?? maybe
-										outController.println(Protocol.STORE_ACK_TOKEN + " " + data[1]);
+										long timeout_time = System.currentTimeMillis() + timeout;
+										while (System.currentTimeMillis() <= timeout_time) {
+											out.write(in.readNBytes(filesize)); // possible threadlock?? maybe
+											outController.println(Protocol.STORE_ACK_TOKEN + " " + data[1]);
+											break;
+										}
 										out.flush();
 										out.close();
 										System.out.println("Acknowleded for Wrote file : " + data[1]);

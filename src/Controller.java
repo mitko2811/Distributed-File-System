@@ -14,12 +14,13 @@ public class Controller {
 	private Integer rebalance_period;
 	private AtomicInteger Dstore_count = new AtomicInteger(0);
 	private AtomicInteger rebalanceCompleteACK = new AtomicInteger(0);
-	private Boolean activeRebalance=false;
-	private Boolean activeList=false;
-	private Long rebalance_time;
+	private Boolean activeRebalance = false;
+	private Boolean activeList = false;
+	private volatile Long rebalance_time;
 	private Object lock = new Object();
 	private Object removeLock = new Object();
 	private Object storeLock = new Object();
+	private Object DstoreJoinLock = new Object();
 	private ConcurrentHashMap<Integer, ArrayList<String>> dstore_port_files = new ConcurrentHashMap<Integer, ArrayList<String>>();
 	private ConcurrentHashMap<Integer, Integer> dstore_port_numbfiles = new ConcurrentHashMap<Integer, Integer>();
 	private ConcurrentHashMap<String, ArrayList<Integer>> dstore_file_ports = new ConcurrentHashMap<String, ArrayList<Integer>>();
@@ -45,13 +46,10 @@ public class Controller {
 		try {
 			ServerSocket ss = new ServerSocket(cport);
 			new Thread(() -> { // REBALANCE OPERATION THREAD
-				while(true){
+				while (true) {
 					this.rebalance_time = System.currentTimeMillis() + rebalance_period;
 					while (System.currentTimeMillis() <= this.rebalance_time) {
 						continue;
-					}
-					synchronized (lock) {
-						activeRebalance = true;
 					}
 					//activeRebalance = true;
 					rebalanceOperation();
@@ -69,8 +67,9 @@ public class Controller {
 						Integer dstoreport = 0;
 						try {
 							System.out.println("Connected");
-							BufferedReader inClient = new BufferedReader(new InputStreamReader(client.getInputStream()));
-							PrintWriter outClient = new PrintWriter(client.getOutputStream(),true);
+							BufferedReader inClient = new BufferedReader(
+									new InputStreamReader(client.getInputStream()));
+							PrintWriter outClient = new PrintWriter(client.getOutputStream(), true);
 							ConcurrentHashMap<String, ArrayList<Integer>> dstore_file_portsLeftReload = new ConcurrentHashMap<String, ArrayList<Integer>>();
 							String dataline = null;
 							for (;;) {
@@ -132,7 +131,8 @@ public class Controller {
 												if (fileToStore_ACKPorts.get(filename).size() >= R) { // checks if file to store has completed acknowledgements
 													outClient.println(Protocol.STORE_COMPLETE_TOKEN);
 													System.out.println("SEND STORE COMPLETE ACK FOR: " + filename);
-													System.out.println("ACK PORTS NOW FOR FILE: (" + filename + ") (" + fileToStore_ACKPorts.get(filename) + ")");
+													System.out.println("ACK PORTS NOW FOR FILE: (" + filename + ") ("
+															+ fileToStore_ACKPorts.get(filename) + ")");
 													dstore_file_ports.put(filename, fileToStore_ACKPorts.get(filename)); // update dstore_file_ports
 													file_filesize.put(filename, filesize); // add new file's filesize
 													success_Store = true;
@@ -144,7 +144,7 @@ public class Controller {
 												System.out.println("FAILED STORE: " + filename);
 											}
 
-											synchronized(storeLock){
+											synchronized (storeLock) {
 												fileToStore_ACKPorts.remove(filename); // remove stored file from fileToStore_ACKPorts queue
 											}
 											for (String string : file_filesize.keySet()) {
@@ -157,23 +157,29 @@ public class Controller {
 
 									//---------------------------------------------------------------------------------------------------------
 									if (command.equals(Protocol.STORE_ACK_TOKEN)) { // Dstore Store_ACK filename
-										synchronized(storeLock){
-											if(fileToStore_ACKPorts.containsKey(data[1])) fileToStore_ACKPorts.get(data[1]).add(dstoreport);// add ack port inside chmap
+										synchronized (storeLock) {
+											if (fileToStore_ACKPorts.containsKey(data[1]))
+												fileToStore_ACKPorts.get(data[1]).add(dstoreport);// add ack port inside chmap
 										}
 										dstore_port_files.get(dstoreport).add(data[1]);
 										dstore_port_numbfiles.put(dstoreport, dstore_port_files.get(dstoreport).size());
-										System.out.println("RECIEVED ACK FOR: " + data[1] + " FROM PORT: " + dstoreport);
+										System.out
+												.println("RECIEVED ACK FOR: " + data[1] + " FROM PORT: " + dstoreport);
 
 									} else
 
 									//---------------------------------------------------------------------------------------------------------
-									if ((command.equals(Protocol.REMOVE_ACK_TOKEN) || command.equals(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN))) { // Dstore REMOVE_ACK filename
-										synchronized(removeLock){
-											if(fileToRemove_ACKPorts.containsKey(data[1])){fileToRemove_ACKPorts.get(data[1]).remove(dstoreport);}// removing dstore with ack from list
+									if ((command.equals(Protocol.REMOVE_ACK_TOKEN)
+											|| command.equals(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN))) { // Dstore REMOVE_ACK filename
+										synchronized (removeLock) {
+											if (fileToRemove_ACKPorts.containsKey(data[1])) {
+												fileToRemove_ACKPorts.get(data[1]).remove(dstoreport);
+											} // removing dstore with ack from list
 										}
 										dstore_port_files.get(dstoreport).remove(data[1]); //removes file from map of port
 										dstore_file_ports.get(data[1]).remove(dstoreport);// remove port from file - ports map
-										dstore_port_numbfiles.put(dstoreport, dstore_port_numbfiles.get(dstoreport) - 1); // suspend 1 from file count
+										dstore_port_numbfiles.put(dstoreport,
+												dstore_port_numbfiles.get(dstoreport) - 1); // suspend 1 from file count
 										System.out.println("RECIEVED REMOVE ACK for: " + data[1]);
 									} else
 
@@ -195,9 +201,11 @@ public class Controller {
 										} else {
 											if (!file_filesize.containsKey(filename)) { // CHECKS FILE CONTAINS AND INDEX
 												outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
-												System.out.println("SEND ERROR_FILE_DOES_NOT_EXIST_TOKEN for: " + filename);
+												System.out.println(
+														"SEND ERROR_FILE_DOES_NOT_EXIST_TOKEN for: " + filename);
 											} else {
-												if (files_activeStore.contains(filename)|| files_activeRemove.contains(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
+												if (files_activeStore.contains(filename)
+														|| files_activeRemove.contains(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
 													if (command.equals(Protocol.LOAD_TOKEN)) {
 														outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 														continue;
@@ -206,27 +214,30 @@ public class Controller {
 														continue;
 													}
 												}
-												
-												while(activeRebalance){
+
+												while (activeRebalance) {
 													continue;
 												}
 
 												if (command.equals(Protocol.LOAD_TOKEN)) {
 													System.out.println("IT WAS LOAD FROM CLIENT for file: " + data[1]);
-													dstore_file_portsLeftReload.put(filename,new ArrayList<>(dstore_file_ports.get(filename)));
+													dstore_file_portsLeftReload.put(filename,
+															new ArrayList<>(dstore_file_ports.get(filename)));
 													outClient.println(Protocol.LOAD_FROM_TOKEN + " "
 															+ dstore_file_portsLeftReload.get(filename).get(0) + " "
 															+ file_filesize.get(filename));
 													dstore_file_portsLeftReload.get(filename).remove(0);
 												} else {
-													System.out.println("IT WAS RELOAD FROM CLIENT for file: " + data[1]);
+													System.out
+															.println("IT WAS RELOAD FROM CLIENT for file: " + data[1]);
 													if (dstore_file_portsLeftReload.get(filename) != null
 															&& !dstore_file_portsLeftReload.get(filename).isEmpty()) {
 														outClient.println(Protocol.LOAD_FROM_TOKEN + " "
 																+ dstore_file_portsLeftReload.get(filename).get(0) + " "
 																+ file_filesize.get(filename));
 														dstore_file_portsLeftReload.get(filename).remove(0);
-														System.out.println("********AFTERRRportsLeftReload******** is "+ filename);
+														System.out.println("********AFTERRRportsLeftReload******** is "
+																+ filename);
 													} else {
 														outClient.println(Protocol.ERROR_LOAD_TOKEN);
 														System.out.println(
@@ -249,12 +260,14 @@ public class Controller {
 										if (Dstore_count.get() < R) {
 											outClient.println(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
 											System.out.println("NOT ENOUGH DSTORES FOR REMOVE ERROR for: " + filename);
-										} else if (!file_filesize.containsKey(filename) || files_activeStore.contains(filename)) {
+										} else if (!file_filesize.containsKey(filename)
+												|| files_activeStore.contains(filename)) {
 											outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 											System.out.println("SEND FILE DOES NOT EXIST FOR: " + filename);
 										} else {
 											synchronized (lock) {
-												if (files_activeRemove.contains(filename) || !file_filesize.containsKey(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
+												if (files_activeRemove.contains(filename)
+														|| !file_filesize.containsKey(filename)) { // INDEX CHECKS FOR CONCURENT FILE STORE
 													outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
 													continue;
 												} else {
@@ -265,18 +278,21 @@ public class Controller {
 													file_filesize.remove(filename);// remove file_filesize so if broken rebalance should fix
 												}
 											}
-											fileToRemove_ACKPorts.put(filename,new ArrayList<>(dstore_file_ports.get(filename))); // initializes the ports that wait for remove
+											fileToRemove_ACKPorts.put(filename,
+													new ArrayList<>(dstore_file_ports.get(filename))); // initializes the ports that wait for remove
 											files_addCount.remove(filename);
 
-											synchronized(removeLock){
+											synchronized (removeLock) {
 												for (Integer port : fileToRemove_ACKPorts.get(filename)) { // send ports file to delete
 													Socket dstoreSocket = dstore_port_Socket.get(port);//MUST SYNC THIS LOOP
-													PrintWriter outDstore = new PrintWriter(dstoreSocket.getOutputStream(),true);
+													PrintWriter outDstore = new PrintWriter(
+															dstoreSocket.getOutputStream(), true);
 													outDstore.println(Protocol.REMOVE_TOKEN + " " + filename);
-													System.out.println("************ASKED FOR REMOVE OF FILE: " + filename + " on port " + port);
+													System.out.println("************ASKED FOR REMOVE OF FILE: "
+															+ filename + " on port " + port);
 												}
 											}
-											
+
 											boolean success_Remove = false;
 											long timeout_time = System.currentTimeMillis() + timeout;
 											while (System.currentTimeMillis() <= timeout_time) {
@@ -312,7 +328,7 @@ public class Controller {
 										if (Dstore_count.get() < R) {
 											outClient.println(Protocol.ERROR_LOAD_TOKEN);
 											System.out.println("SEND NOT ENOUGH DSTORES FOR REMOVE ERROR");
-										} else if(file_filesize.size()!=0){
+										} else if (file_filesize.size() != 0) {
 											String filesList = String.join(" ", file_filesize.keySet());
 											outClient.println(Protocol.LIST_TOKEN + " " + filesList);
 											System.out.println("asked list from client");
@@ -322,12 +338,12 @@ public class Controller {
 									} else
 
 									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.LIST_TOKEN) && isDstore){ //&& activeList) { // DSTORE LIST //for rebalance add && activeList
+									if (command.equals(Protocol.LIST_TOKEN) && isDstore && activeList) {// DSTORE LIST //for rebalance add && activeList
 										ArrayList<String> filelist = new ArrayList<String>(Arrays.asList(data));
 										filelist.remove(Protocol.LIST_TOKEN); // remove command entry
 										dstore_port_numbfiles.put(dstoreport, filelist.size()); // updates port/numbfiles hashmap
 										dstore_port_files.put(dstoreport, filelist); // puts list in hashmap
-
+										dstore_port_Socket.put(dstoreport, client);
 										for (String string : filelist) {
 											if (dstore_file_ports.get(string) == null) {
 												dstore_file_ports.put(string, new ArrayList<Integer>());
@@ -352,39 +368,46 @@ public class Controller {
 											client.close();
 											break;
 										}
-										dstore_port_files.put(dstoreport, new ArrayList<String>()); // initialize port number of dstore
-										dstore_port_numbfiles.put(dstoreport, 0); // initialize port/numbfiles hashmap
-										dstore_port_Socket.put(dstoreport, client);
-										isDstore = true;
-										Dstore_count.incrementAndGet();
-										//this.rebalance_time=System.currentTimeMillis(); // turn on rebalance if not running
-										outClient.println(Protocol.LIST_TOKEN); // delete later call rebalance
-										System.out.println("Send list to dstore");
-
+										synchronized (DstoreJoinLock) {
+											while (activeRebalance) {
+												continue;
+											}
+											dstore_port_files.put(dstoreport, new ArrayList<String>()); // initialize port number of dstore
+											dstore_port_numbfiles.put(dstoreport, 0); // initialize port/numbfiles hashmap
+											dstore_port_Socket.put(dstoreport, client);
+											isDstore = true;
+											Dstore_count.incrementAndGet();
+											this.rebalance_time = System.currentTimeMillis(); // turn on rebalance if not running
+										}
 									} else {
 										System.out.println("Unrecognised or Timed Out Command! - " + command);
 										continue; // log error
 									}
 								} else {
-									if (isDstore){
+									if (isDstore) {
 										System.out.println("DSTORE FAIL!!!!!!!!!!!!!!!");
-										while(activeRebalance){
+										Dstore_count.decrementAndGet(); //decrease count if dstore disconnected
+										while (activeRebalance) {
 											continue;
 										}
-										Dstore_count.decrementAndGet(); //decrease count if dstore disconnected
-										clearPort(dstoreport); // clear port data if dstore disonnected
+										synchronized (lock) {
+											clearPort(dstoreport); // clear port data if dstore disonnected
+										}
 									}
-									client.close(); break;
+									client.close();
+									break;
 								}
 							}
 						} catch (Exception e) {
-							if (isDstore){
+							if (isDstore) {
 								System.out.println("DSTORE FAIL!!!!!!!!!!!!!!!");
-								while(activeRebalance){
+								Dstore_count.decrementAndGet(); //decrease count if dstore disconnected
+								while (activeRebalance) {
 									continue;
 								}
-								Dstore_count.decrementAndGet(); //decrease count if dstore disconnected
-								clearPort(dstoreport); // clear port data if dstore disonnected
+								synchronized (lock) {
+									clearPort(dstoreport); // clear port data if dstore disonnected
+								}
 							}
 							System.out.println("error1 " + e);
 							e.printStackTrace();
@@ -438,158 +461,222 @@ public class Controller {
 	}
 
 	public synchronized void rebalanceOperation() {
-		System.out.println("*********************Rebalance waiting store/remove************************");
-		while (files_activeRemove.size() != 0 && files_activeStore.size() != 0) {
-			continue;
-		}
+		try {
+			if (Dstore_count.get() < R) {
+				System.out.println("NOT ENOUGH DSTORES FOR REBALANCE");
+				return;
+			}
 
-		for (String string : file_filesize.keySet()) {
-			System.out.println("FILES BEFORE REBALANCE - " + string);
-		}
-		System.out.println("*********************Rebalance started************************");
-		Integer newDSCount = dstore_port_Socket.size(); // before rebalance count
-		ArrayList<Integer> failedPorts = new ArrayList<>();
-		
-		//DO HERE
-		activeList=true;
-		for (Integer port : dstore_port_Socket.keySet()) { // send LIST command to each dstore
-			try{
-				PrintWriter outDSP = new PrintWriter(dstore_port_Socket.get(port).getOutputStream(),true);
-				outDSP.println(Protocol.LIST_TOKEN);
-				for (String file : dstore_port_files.get(port)) {
-					System.out.println("FILES IN PORT: " + port + " FILE: " + file);
+			synchronized (lock) {
+				activeRebalance = true;
+			}
+
+			System.out.println("*********************Rebalance waiting store/remove************************");
+			while (files_activeRemove.size() != 0 && files_activeStore.size() != 0) {
+				continue;
+			}
+
+			for (String string : file_filesize.keySet()) {
+				System.out.println("FILES BEFORE REBALANCE - " + string);
+			}
+			System.out.println("*********************Rebalance started************************");
+			Integer newDSCount = dstore_port_Socket.size(); // before rebalance count
+			ArrayList<Integer> failedPorts = new ArrayList<>();
+
+			//DO HERE
+			activeList = true;
+			for (Integer port : dstore_port_Socket.keySet()) { // send LIST command to each dstore
+				try {
+					PrintWriter outDSP = new PrintWriter(dstore_port_Socket.get(port).getOutputStream(), true);
+					outDSP.println(Protocol.LIST_TOKEN);
+					for (String file : dstore_port_files.get(port)) {
+						System.out.println("FILES IN PORT: " + port + " FILE: " + file);
+					}
+				} catch (Exception e) {
+					System.out.println("Disconnected DSTORE " + port + "  ERROR:" + e);
+					newDSCount--; //if dstore disconnected lower list asks
+					failedPorts.add(port);
+					e.printStackTrace();
+				}
+				System.out.println("END FILES OF: " + port);
+			}
+
+			System.out.println("*********************SEND LIST TO ALL DSTORE************************");
+			listACKPorts.clear();
+
+			long timeout_time = System.currentTimeMillis() + timeout;
+			while (System.currentTimeMillis() <= timeout_time) {// checks if file to store has completed acknowledgements
+				if (listACKPorts.size() >= newDSCount) {
+					System.out.println("ENTERED LIST FROM ALL");
+					break;
 				}
 			}
-			catch (Exception e) {
-				System.out.println("Disconnected DSTORE " + port+  "  ERROR:"+ e);
-				newDSCount--; //if dstore disconnected lower list asks
-				failedPorts.add(port);
-				e.printStackTrace();
+			activeList = false;
+
+			for (Integer port : failedPorts) { // cleanup broken disconnected DStores
+				//dstore_port_Socket.get(port).close();
+				clearPort(port);
 			}
-			System.out.println("END FILES OF: " + port);
-		}
 
-		System.out.println("*********************SEND LIST TO ALL DSTORE************************");
-		listACKPorts.clear();
-
-		long timeout_time = System.currentTimeMillis() + timeout;
-		while (System.currentTimeMillis() <= timeout_time) {// checks if file to store has completed acknowledgements
-			if (listACKPorts.size()>=newDSCount) {
-				System.out.println("ENTERED LIST FROM ALL");
-				break;
+			System.out.println("*********************REVIEVED/TIMEDOUT LIST************************");
+			// SECTION FOR SENDING REBALANCE OPERATION TO DSTORES WITH FILES TO SPREAD AND REMOVE
+			sendRebalance();
+			System.out.println("*********************SEND REBALANCE TO ALL************************");
+			Integer rebalanceExpected = dstore_port_Socket.size();
+			timeout_time = System.currentTimeMillis() + timeout;
+			while (System.currentTimeMillis() <= timeout_time) {
+				if (rebalanceCompleteACK.get() >= rebalanceExpected) { // checks if file to store has completed acknowledgements
+					System.out.println(
+							"********************************REBALANCE SUCCESSFULL********************************************");
+					break;
+				}
 			}
-		}
-		activeList=false;
 
-		for (Integer port : failedPorts) { // cleanup broken disconnected DStores
-			//dstore_port_Socket.get(port).close();
-			dstore_port_Socket.remove(port);
-		}
-
-		System.out.println("*********************REVIEVED/TIMEDOUT LIST************************");
-		// SECTION FOR SENDING REBALANCE OPERATION TO DSTORES WITH FILES TO SPREAD AND REMOVE
-		sendRebalance();
-		System.out.println("*********************SEND REBALANCE TO ALL************************");
-		Integer rebalanceExpected = dstore_port_Socket.size();
-		timeout_time = System.currentTimeMillis() + timeout;
-		while (System.currentTimeMillis() <= timeout_time) {
-			if (rebalanceCompleteACK.get()>=rebalanceExpected) { // checks if file to store has completed acknowledgements
-				System.out.println("********************************REBALANCE SUCCESSFULL********************************************");
-				break;
+			for (String string : file_filesize.keySet()) {
+				System.out.println("FILES AFTER REBALANCE - " + string);
 			}
+			System.out.println("*********************Rebalance END************************");
+			rebalanceCompleteACK.set(0);
+			activeRebalance = false;
+		} catch (Exception e) {
+			//TODO: handle exception
+			activeRebalance = false;
 		}
-
-		for (String string : file_filesize.keySet()) {
-			System.out.println("FILES AFTER REBALANCE - " + string);
-		}
-		System.out.println("*********************Rebalance END************************");
-		rebalanceCompleteACK.set(0);
 	}
 
-	private void sendRebalance(){
-		for (Integer port : dstore_port_Socket.keySet()) {  // function for sorting the REBALANCE files_to_send files_to_remove
-			String files_to_send="";
-			String files_to_remove="";
-			Integer files_to_send_count=0;
+	private void sendRebalance() {
+		ConcurrentHashMap<Integer, ArrayList<String>> dstore_port_filesTMP = new ConcurrentHashMap<Integer, ArrayList<String>>();
+		for (Integer port : dstore_port_Socket.keySet()) { // function for sorting the REBALANCE files_to_send files_to_remove
+			System.out.println("REEEEEEEEEEEEEEEEEEEEEEEEEEEEE PORT: " + port);
+			String files_to_send = "";
+			String files_to_remove = "";
+			Integer files_to_send_count = 0;
 			Integer files_to_remove_count = 0;
+			System.out.println("*********************SEND1***********************");
+			ArrayList<String> dstore_filesTMP = new ArrayList<String>();
 			for (String file : dstore_port_files.get(port)) {
-				if(files_addCount.containsKey(file)){
-					String[] portsToSendFile = getPortsToStoreFile(files_addCount.get(file),file);
+				System.out.println("*********************SEND2***********************");
+				if (files_addCount.containsKey(file)) {
+					System.out.println("*********************SEND3***********************");
+					Integer[] portsToSendFile = getPortsToStoreFile(files_addCount.get(file), file);
+					System.out.println("*********************SEND4***********************");
+					System.out.println(Arrays.toString(portsToSendFile) + " " + file);
+					for (Integer pAdd : portsToSendFile) { // add files to structure
+						dstore_filesTMP.add(file);
+						dstore_port_numbfiles.put(pAdd, dstore_port_numbfiles.get(pAdd) + 1);
+						dstore_file_ports.get(file).add(pAdd);
+					}
+
+					String[] portsToSendFileStr = new String[portsToSendFile.length];
+					for (int i = 0; i < portsToSendFile.length; i++) {
+						portsToSendFileStr[i] = portsToSendFile[i].toString();
+					}
+
+					System.out.println("*********************SEND5***********************");
 					System.out.println("OOOOOOOOOOOOOOOOOOOOOOOOO SIZE OF PORTSTOSENDFILE : " + portsToSendFile.length);
 					String portcount = Integer.toString(portsToSendFile.length);
-					String portsToSendStr = String.join(" ", portsToSendFile);
+					String portsToSendStr = String.join(" ", portsToSendFileStr);
+					System.out.println("*********************SEND6***********************");
 					System.out.println("UUUUUUUUUUUUUUUUUUUUUU portsToSendStr : " + portsToSendFile.length);
+
 					files_addCount.remove(file);
+					System.out.println("*********************SEND7***********************");
 					files_to_send_count++;
 					files_to_send = files_to_send + " " + file + " " + portcount + " " + portsToSendStr;
 				}
-				if(!file_filesize.containsKey(file)){
+				System.out.println("*********************SEND8***********************");
+				if (!file_filesize.containsKey(file)) {
 					System.out.println("LLALALALLALALALALLAAALALLALALAL : " + file);
 					files_to_remove = files_to_remove + " " + file;
 					files_to_remove_count++;
-				}	
+				}
 			}
 
+			if (!dstore_port_filesTMP.containsKey(port)) {
+				dstore_port_filesTMP.put(port, new ArrayList<>());
+			}
+			dstore_port_filesTMP.get(port).addAll(dstore_filesTMP);
+
+			System.out.println("*********************SEND9***********************");
 			String message = "";
 			message = " " + files_to_send_count + files_to_send + " " + files_to_remove_count + files_to_remove;
 			try {
-				PrintWriter outDSREBALANCE = new PrintWriter(dstore_port_Socket.get(port).getOutputStream(),true);
+				PrintWriter outDSREBALANCE = new PrintWriter(dstore_port_Socket.get(port).getOutputStream(), true);
 				outDSREBALANCE.println(Protocol.REBALANCE_TOKEN + message);
-				System.out.println("@@@@@@@@@@@@@@@@@@@@"+Protocol.REBALANCE_TOKEN + message+"@@@@@@@@@@@@@@@@@@@@");
+				System.out.println("@@@@@@@@@@@@@@@@@@@@" + Protocol.REBALANCE_TOKEN + message
+						+ "@@@@@@@@@@@@@@@@@@@@ for port: " + port);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 		}
+		System.out.println("*********************SEND10***********************");
+		for (Integer port : dstore_port_filesTMP.keySet()) {
+			dstore_port_files.get(port).addAll(dstore_port_filesTMP.get(port));
+		}
+		//this.dstore_port_files = new ConcurrentHashMap<>(dstore_port_filesTMP); // update hashmap
+
 	}
 
-	private synchronized void clearPort(Integer port){
-		System.out.println("CLEARING PORT " + port +"********************************************");
+	private synchronized void clearPort(Integer port) {
+		System.out.println("CLEARING PORT " + port + "********************************************");
 		for (String file : dstore_port_files.get(port)) {
-			if(files_addCount.get(file)==null){
-				files_addCount.put(file,1);
-			}else {
-				files_addCount.put(file,files_addCount.get(file)+1);
+			if (files_addCount.get(file) == null) {
+				files_addCount.put(file, 1);
+			} else {
+				files_addCount.put(file, files_addCount.get(file) + 1);
 			}
 		}
 		dstore_port_files.remove(port);
 		dstore_port_numbfiles.remove(port);
 		dstore_port_Socket.remove(port);
-		ConcurrentHashMap<String, ArrayList<Integer>> tempFilePorts = new ConcurrentHashMap<String, ArrayList<Integer>>(dstore_file_ports);
+		ConcurrentHashMap<String, ArrayList<Integer>> tempFilePorts = new ConcurrentHashMap<String, ArrayList<Integer>>(
+				dstore_file_ports);
 		for (String file : tempFilePorts.keySet()) {
-			if(!file_filesize.keySet().contains(file)){
+			if (!file_filesize.keySet().contains(file)) {
 				dstore_file_ports.remove(file);
-			}else if(dstore_file_ports.get(file).contains(port)){
+			} else if (dstore_file_ports.get(file).contains(port)) {
 				dstore_file_ports.get(file).remove(port);
 			}
 		}
-		System.out.println("CLEARED PORT " + port +"********************************************");
+		System.out.println("CLEARED PORT " + port + "********************************************");
 	}
 
-	private String[] getPortsToStoreFile(int R,String file) { // finds R ports with least files
-		Integer ports[] = new Integer[R];
+	private synchronized Integer[] getPortsToStoreFile(int n, String file) { // finds R ports with least files
+		Integer ports[] = new Integer[n];
 
 		for (Integer port : dstore_port_numbfiles.keySet()) {
 			int max = 0;
-
-			for (int i = 0; i < R; i++) {
+			System.out.println("--------port: " + port + "------------------------------------numbfiles: "
+					+ dstore_port_numbfiles.get(port));
+			System.out.println(
+					"PORT " + port + " CONTAINS FILE " + file + " is " + dstore_port_files.get(port).contains(file));
+			for (int i = 0; i < n; i++) {
 				if (ports[i] == null) {
 					max = i;
 					ports[i] = port;
 					break;
 				}
-				if (ports[i] != null && dstore_port_numbfiles.get(ports[i]) > dstore_port_numbfiles.get(ports[max]) && !dstore_port_files.get(ports[i]).contains(file)) {
+				if (ports[i] != null && dstore_port_numbfiles.get(ports[i]) > dstore_port_numbfiles.get(ports[max])
+						&& !dstore_port_files.get(ports[i]).contains(file)) {
 					max = i;
+					System.out.println(
+							"-------processing MAX-port: " + port + "  FILESS: " + dstore_port_files.get(ports[i]));
 				}
 			}
-			if (dstore_port_numbfiles.get(port) < dstore_port_numbfiles.get(ports[max]) && !dstore_port_files.get(port).contains(file)) {
+			if (dstore_port_numbfiles.get(port) <= dstore_port_numbfiles.get(ports[max])
+					&& !dstore_port_files.get(port).contains(file)) {
 				ports[max] = port;
+				System.out
+						.println("-------CURRENT MAX-port: " + port + " FILESS :" + dstore_port_files.get(ports[max]));
+			} else if (dstore_port_numbfiles.get(port) > dstore_port_numbfiles.get(ports[max])
+					&& dstore_port_files.get(ports[max]).contains(file)) {
+				ports[max] = port;
+				System.out
+						.println("-------CURRENT MAX-port: " + port + " FILESS :" + dstore_port_files.get(ports[max]));
 			}
 		}
-		String returnPorts[] = new String[R];
-		for (int i = 0; i < R; i++) {
-			returnPorts[i] = ports[i].toString();
-		}
-		return returnPorts;
+
+		return ports;
 	}
 
 }
