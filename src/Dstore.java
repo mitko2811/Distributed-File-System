@@ -66,7 +66,8 @@ public class Dstore {
 							}
 							System.out.println("Revieved Controller Command: " + command);
 
-							if (command.equals(Protocol.REMOVE_TOKEN)) { // Controller LIST -> Controller file_list
+							//-----------------------------Controller Remove Command-----------------------------
+							if (command.equals(Protocol.REMOVE_TOKEN)) {
 								if (data.length != 2) {
 									System.err.println("Malformed message received for Remove");
 									continue;
@@ -84,8 +85,9 @@ public class Dstore {
 											Protocol.REMOVE_ACK_TOKEN + " " + filename);
 								}
 							} else
-
-							if (command.equals(Protocol.REBALANCE_TOKEN)) { // Controller LIST -> Controller file_list
+							
+							//-----------------------------Controller Rebalance Command-----------------------------
+							if (command.equals(Protocol.REBALANCE_TOKEN)) {
 								Integer filesToSend = Integer.parseInt(data[1]);
 								Integer index = 2;
 								for (int i = 0; i < filesToSend; i++) {
@@ -132,7 +134,8 @@ public class Dstore {
 
 							} else
 
-							if (command.equals(Protocol.LIST_TOKEN)) { // Controller LIST -> Controller file_list
+							//-----------------------------Controller List Command-----------------------------
+							if (command.equals(Protocol.LIST_TOKEN)) {
 								if (data.length != 1) {
 									System.err.println("Malformed message received for LIST");
 									continue;
@@ -166,8 +169,8 @@ public class Dstore {
 
 		if (controller_fail)
 			return; //exit if controller connection had failed
-		System.out.println("GOING TO CLIENT PART");
-		/* ---------------------------------CLIENTS PART----------------------------------------------*/
+
+		/* -----------------------------Clients Part-----------------------------*/
 		try {
 			ServerSocket ss = new ServerSocket(port);
 			for (;;) {
@@ -197,6 +200,7 @@ public class Dstore {
 									}
 									System.out.println("Recieved Client Command: " + command);
 
+									//-----------------------------Client Store Command-----------------------------
 									if (command.equals(Protocol.STORE_TOKEN)) {
 										if (data.length != 3) {
 											System.err.println("Malformed message received for STORE");
@@ -221,6 +225,7 @@ public class Dstore {
 										return;
 									} else
 
+									//-----------------------------Dstore Rebalance Asked-----------------------------
 									if (command.equals(Protocol.REBALANCE_STORE_TOKEN)) {
 										if (data.length != 3) {
 											System.err.println("Malformed message received for REBALANCE_STORE");
@@ -238,7 +243,8 @@ public class Dstore {
 										return;
 									} else
 
-									if (command.equals(Protocol.LOAD_DATA_TOKEN)) { // Client LOAD_DATA filename -> file_content
+									//-----------------------------Client Load Command-----------------------------
+									if (command.equals(Protocol.LOAD_DATA_TOKEN)) {
 										if (data.length != 2) {
 											System.err.println("Malformed message received for LOAD");
 											continue;

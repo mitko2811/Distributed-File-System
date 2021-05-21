@@ -8,33 +8,31 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Controller {
-	//private Logger;
-	private Integer cport;
+	private Integer cport; // port of Controller
 	private Integer R; // Replication factor - number of Dstores
-	private Integer timeout;
-	private Integer rebalance_period;
-	private AtomicInteger Dstore_count = new AtomicInteger(0);
-	private AtomicInteger rebalanceCompleteACK = new AtomicInteger(0);
-	private volatile Boolean activeRebalance = false;
-	private volatile Boolean activeList = false;
-	private volatile Long rebalance_time;
+	private Integer timeout; // Timeout period in ms
+	private Integer rebalance_period; // period to call Rebalance in ms
+	private AtomicInteger Dstore_count = new AtomicInteger(0); // number of operating Dstores
+	private AtomicInteger rebalanceCompleteACK = new AtomicInteger(0); // counter for rebalance operation competion
+	private volatile Boolean activeRebalance = false; // rebalance operation is active
+	private volatile Boolean activeList = false; // if rebalance list request is active
+	private volatile Long rebalanceTime; // tracks if it is time for rebalance
 	private Object lock = new Object();
 	private Object removeLock = new Object();
 	private Object storeLock = new Object();
 	private Object DstoreJoinLock = new Object();
-	private List<String> timedoutStore = Collections.synchronizedList(new ArrayList<String>());
-	private ConcurrentHashMap<Integer, ArrayList<String>> dstore_port_files = new ConcurrentHashMap<Integer, ArrayList<String>>();
-	private ConcurrentHashMap<Integer, Integer> dstore_port_numbfiles = new ConcurrentHashMap<Integer, Integer>();
-	private ConcurrentHashMap<String, ArrayList<Integer>> dstore_file_ports = new ConcurrentHashMap<String, ArrayList<Integer>>();
-	private ConcurrentHashMap<String, ArrayList<Integer>> fileToStore_ACKPorts = new ConcurrentHashMap<String, ArrayList<Integer>>();
-	private ConcurrentHashMap<String, Integer> file_filesize = new ConcurrentHashMap<String, Integer>();
-	private ConcurrentHashMap<Integer, Socket> dstore_port_Socket = new ConcurrentHashMap<Integer, Socket>();
-	private ConcurrentHashMap<String, ArrayList<Integer>> fileToRemove_ACKPorts = new ConcurrentHashMap<String, ArrayList<Integer>>();
 	private List<Integer> listACKPorts = Collections.synchronizedList(new ArrayList<Integer>()); // index of active file stores
 	private List<String> files_activeStore = Collections.synchronizedList(new ArrayList<String>()); // index of active file stores
 	private List<String> files_activeRemove = Collections.synchronizedList(new ArrayList<String>()); // index of active file removes
-	private ConcurrentHashMap<String, Integer> files_addCount = new ConcurrentHashMap<String, Integer>();
-	private ConcurrentHashMap<String, Integer> files_RemoveCount = new ConcurrentHashMap<String, Integer>();
+	private ConcurrentHashMap<Integer, ArrayList<String>> dstore_port_files = new ConcurrentHashMap<>(); // dstore port with fileslist 
+	private ConcurrentHashMap<Integer, Integer> dstore_port_numbfiles = new ConcurrentHashMap<>(); // dstore port with its file count(reduces overhead)
+	private ConcurrentHashMap<String, ArrayList<Integer>> dstore_file_ports = new ConcurrentHashMap<>(); // files with ports location relation
+	private ConcurrentHashMap<String, Integer> file_filesize = new ConcurrentHashMap<>(); // keeps track of all valid files with their sizes
+	private ConcurrentHashMap<Integer, Socket> dstore_port_Socket = new ConcurrentHashMap<>();// dstore port - Socket relation
+	private ConcurrentHashMap<String, ArrayList<Integer>> fileToStore_ACKPorts = new ConcurrentHashMap<>(); //counts stored file confirmatios
+	private ConcurrentHashMap<String, ArrayList<Integer>> fileToRemove_ACKPorts = new ConcurrentHashMap<>(); //counts removed file confirmatios
+	private ConcurrentHashMap<String, Integer> files_addCount = new ConcurrentHashMap<>(); //counts files to add from failed dstores
+	private ConcurrentHashMap<String, Integer> files_RemoveCount = new ConcurrentHashMap<>(); //counts files to remove from failed dstores
 
 	public Controller(int cport, int R, int timeout, int rebalance_period) {
 		this.cport = cport;
@@ -55,8 +53,8 @@ public class Controller {
 
 			new Thread(() -> { // REBALANCE OPERATION THREAD
 				while (true) {
-					this.rebalance_time = System.currentTimeMillis() + rebalance_period;
-					while (System.currentTimeMillis() <= this.rebalance_time) {
+					this.rebalanceTime = System.currentTimeMillis() + rebalance_period;
+					while (System.currentTimeMillis() <= this.rebalanceTime) {
 						continue;
 					}
 					rebalanceOperation();
@@ -80,7 +78,7 @@ public class Controller {
 							ConcurrentHashMap<String, ArrayList<Integer>> dstore_file_portsLeftReload = new ConcurrentHashMap<String, ArrayList<Integer>>();
 							String dataline = null;
 							for (;;) {
-
+								//-----------------------------Waiting for data-----------------------------
 								dataline = inClient.readLine();
 								ControllerLogger.getInstance().messageReceived(client, dataline); // log recieved messages
 								if (dataline != null) {
@@ -94,8 +92,8 @@ public class Controller {
 									}
 
 									System.out.println("COMMAND RECIEVED \"" + command + "\"");
-									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.STORE_TOKEN)) { // CLIENT STORE
+									//-----------------------------Client Store Command-----------------------------
+									if (command.equals(Protocol.STORE_TOKEN)) {
 										if (data.length != 3) {
 											System.err.println("Malformed message received for STORE");
 											continue;
@@ -133,7 +131,6 @@ public class Controller {
 											outClient.println(Protocol.STORE_TO_TOKEN + " " + portsToStoreString);
 											ControllerLogger.getInstance().messageSent(client,
 													Protocol.STORE_TO_TOKEN + " " + portsToStoreString);
-											timedoutStore.add(filename);
 
 											boolean success_Store = false;
 											long timeout_time = System.currentTimeMillis() + timeout;
@@ -142,9 +139,6 @@ public class Controller {
 													outClient.println(Protocol.STORE_COMPLETE_TOKEN);
 													ControllerLogger.getInstance().messageSent(client,
 															Protocol.STORE_COMPLETE_TOKEN);
-													synchronized (storeLock) {
-														timedoutStore.remove(filename);
-													}
 													dstore_file_ports.put(filename, fileToStore_ACKPorts.get(filename)); // update dstore_file_ports
 													file_filesize.put(filename, filesize); // add new file's filesize
 													success_Store = true;
@@ -163,8 +157,8 @@ public class Controller {
 										}
 									} else
 
-									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.STORE_ACK_TOKEN)) { // Dstore Store_ACK filename
+									//-----------------------------Dstore Store_ACK Recieved-----------------------------
+									if (command.equals(Protocol.STORE_ACK_TOKEN)) {
 										synchronized (storeLock) {
 											if (fileToStore_ACKPorts.containsKey(data[1]))
 												fileToStore_ACKPorts.get(data[1]).add(dstoreport);// add ack port inside chmap
@@ -175,9 +169,9 @@ public class Controller {
 
 									} else
 
-									//---------------------------------------------------------------------------------------------------------
+									//-----------------------------Dstore Remove_ACK Recieved-----------------------------
 									if ((command.equals(Protocol.REMOVE_ACK_TOKEN)
-											|| command.equals(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN))) { // Dstore REMOVE_ACK filename
+											|| command.equals(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN))) {
 										synchronized (removeLock) {
 											if (fileToRemove_ACKPorts.containsKey(data[1])) {
 												fileToRemove_ACKPorts.get(data[1]).remove(dstoreport);
@@ -193,8 +187,8 @@ public class Controller {
 										rebalanceCompleteACK.incrementAndGet();
 									} else
 
-									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.LOAD_TOKEN) || command.equals(Protocol.RELOAD_TOKEN)) { // Client LOAD
+									//-----------------------------Client Load Command-----------------------------
+									if (command.equals(Protocol.LOAD_TOKEN) || command.equals(Protocol.RELOAD_TOKEN)) {
 										if (data.length != 2) {
 											System.err.println("Malformed message received for LOAD/RELOAD");
 											continue;
@@ -263,8 +257,8 @@ public class Controller {
 										}
 									} else
 
-									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.REMOVE_TOKEN)) { // CLIENT REMOVE
+									//-----------------------------Client Remove Command-----------------------------
+									if (command.equals(Protocol.REMOVE_TOKEN)) {
 										if (data.length != 2) {
 											System.err.println("Malformed message received for REMOVE");
 											continue;
@@ -301,7 +295,7 @@ public class Controller {
 
 											synchronized (removeLock) {
 												for (Integer port : fileToRemove_ACKPorts.get(filename)) { // send ports file to delete
-													Socket dstoreSocket = dstore_port_Socket.get(port);//MUST SYNC THIS LOOP
+													Socket dstoreSocket = dstore_port_Socket.get(port);
 													PrintWriter outDstore = new PrintWriter(
 															dstoreSocket.getOutputStream(), true);
 													outDstore.println(Protocol.REMOVE_TOKEN + " " + filename);
@@ -331,8 +325,8 @@ public class Controller {
 										}
 									} else
 
-									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.LIST_TOKEN) && isDstore && activeList) {// DSTORE LIST //for rebalance add && activeList
+									//-----------------------------Dstore List Recieved-----------------------------
+									if (command.equals(Protocol.LIST_TOKEN) && isDstore && activeList) {
 										ArrayList<String> filelist = new ArrayList<String>(Arrays.asList(data));
 										filelist.remove(0); // remove command entry
 										dstore_port_numbfiles.put(dstoreport, filelist.size()); // updates port/numbfiles hashmap
@@ -348,8 +342,8 @@ public class Controller {
 										listACKPorts.add(dstoreport);
 									} else
 
-									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.LIST_TOKEN) && !isDstore) { // Client LIST -> Client LIST file_list
+									//-----------------------------Client List Command-----------------------------
+									if (command.equals(Protocol.LIST_TOKEN) && !isDstore) {
 										if (data.length != 1) {
 											System.err.println("Malformed message received for LIST by Client");
 											continue;
@@ -369,8 +363,8 @@ public class Controller {
 										}
 									} else
 
-									//---------------------------------------------------------------------------------------------------------
-									if (command.equals(Protocol.JOIN_TOKEN)) { // Dstore JOIN port
+									//-----------------------------Dstore Join Command-----------------------------
+									if (command.equals(Protocol.JOIN_TOKEN)) {
 										if (data.length != 2) {
 											System.err.println("Malformed message for Dstore Joining");
 											continue;
@@ -393,7 +387,7 @@ public class Controller {
 											isDstore = true;
 											Dstore_count.incrementAndGet();
 											activeRebalance = true;
-											this.rebalance_time = System.currentTimeMillis(); // turn on rebalance if not running
+											this.rebalanceTime = System.currentTimeMillis(); // turn on rebalance if not running
 										}
 									} else {
 										System.err.println("Unrecognised or Timed Out Command! - " + dataline);
