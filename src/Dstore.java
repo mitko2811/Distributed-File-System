@@ -85,7 +85,7 @@ public class Dstore {
 											Protocol.REMOVE_ACK_TOKEN + " " + filename);
 								}
 							} else
-							
+
 							//-----------------------------Controller Rebalance Command-----------------------------
 							if (command.equals(Protocol.REBALANCE_TOKEN)) {
 								Integer filesToSend = Integer.parseInt(data[1]);

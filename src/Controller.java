@@ -92,6 +92,7 @@ public class Controller {
 									}
 
 									System.out.println("COMMAND RECIEVED \"" + command + "\"");
+
 									//-----------------------------Client Store Command-----------------------------
 									if (command.equals(Protocol.STORE_TOKEN)) {
 										if (data.length != 3) {
