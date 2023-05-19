@@ -1,5 +1,5 @@
 # Distributed-File-System Server
-This Distributed File Server is using a Controller class to service TCP Client Requests using Java. The DFS server is part of a coursework for COMP2207(Distributed Systems And Networks) of the Univeristy of Southampton 2021.<br>
+This Distributed File Server is using a Controller class to service TCP Client Requests using Java. The DFS server is part of a university coursework.<br>
 Tested and working with Java SDK 14.0.2 and up.<br>
 
 
